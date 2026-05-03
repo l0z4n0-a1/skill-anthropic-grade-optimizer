@@ -1,0 +1,27 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "./.claude/hooks/validate.sh",
+            "timeout": 600
+          }
+        ]
+      }
+    ],
+    "CustomEventThatDoesntExist": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo 'this event is not in the canonical 26'"
+          }
+        ]
+      }
+    ]
+  }
+}

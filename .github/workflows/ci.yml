@@ -1,0 +1,51 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  ci:
+    name: Lint, test, and self-audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyyaml pytest
+
+      - name: Model currency guard
+        run: python scripts/check_model_currency.py
+
+      - name: Rule schema + orchestrator + detector unit tests
+        run: python -m pytest tests/ -v -p no:langsmith_plugin
+
+      - name: 15-fixture eval suite
+        run: python scripts/run_eval_suite.py
+
+      - name: Calibration telemetry (precision/recall/F1)
+        run: python tests/calibration.py
+
+      - name: Strange-loop self-audit
+        run: python scripts/run.py SKILL.md --target opus-4-7 --mode audit
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: audit-results
+          path: |
+            evals/results/
+            evals/SELF-AUDIT.md

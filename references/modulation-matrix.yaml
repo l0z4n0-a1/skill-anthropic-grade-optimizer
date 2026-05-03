@@ -1,0 +1,153 @@
+# Model Modulation Matrix
+# Self-contained: every cell carries its own source_url where applicable.
+# Bump the version below + add a profile when a new Anthropic model ships;
+# scripts/check_model_currency.py guards against drift.
+
+version: 1.0
+date: 2026-05-02
+
+# ═══════════════════════════════════════════════════════════════
+# CRITICAL ANTI-PATTERNS (auto-flag 🔴 by target_model)
+# ═══════════════════════════════════════════════════════════════
+
+api_breaking_changes:
+  opus-4-7:
+    - "temperature, top_p, top_k → 400 error (sampling params not accepted)"
+    - "thinking:{type:enabled, budget_tokens:N} → 400 error (manual extended thinking)"
+    - "assistant message prefill → 400 error"
+    - "ALL-CAPS imperatives over-suppress output (literal interpretation)"
+    - "Implicit generalization fails — state scope explicitly"
+  opus-4-6:
+    - "assistant message prefill → 400 error"
+    - "Aggressive language causes overtriggering on tools/skills"
+  sonnet-4-6:
+    - "assistant message prefill → 400 error"
+    - "Default effort=high causes higher latency — set medium for typical workloads"
+  haiku-4-5:
+    - "Adaptive thinking NOT supported — use manual <thinking>/<answer> tags"
+    - "effort parameter NOT supported"
+
+# ═══════════════════════════════════════════════════════════════
+# PROMPTING DIRECTIVES per model (condensed)
+# ═══════════════════════════════════════════════════════════════
+
+opus-4-7:
+  api_id: "claude-opus-4-7"
+  context_window: 1000000
+  max_output: 128000
+  ambiguity_tolerance: low
+  optimal_density: high
+  few_shot_count: 3-5
+  reasoning_mode: adaptive_thinking
+  effort_levels: [low, medium, high, xhigh, max]
+  effort_default: high
+  effort_recommended: xhigh (coding/agentic)
+  tone: direct, opinionated, fewer emoji
+  verbosity: task-calibrated (not fixed)
+  literal_interpretation: true
+  prefill: REJECTED
+  sampling_params: REJECTED
+  xml_preference: high
+  emphasis_in_claude_md: ENDORSED
+  emphasis_in_skill: YELLOW_FLAG
+  tokenizer_inflation: "1.0x to 1.35x vs prior models"
+  image_max_resolution: 2576px
+  image_coordinates: 1:1 with pixels (no scale)
+  source: "platform.claude.com/docs/en/about-claude/models/whats-new-claude-4-7"
+  confidence: high
+
+opus-4-6:
+  api_id: "claude-opus-4-6"
+  context_window: 1000000
+  max_output: 128000
+  ambiguity_tolerance: medium
+  optimal_density: medium  # over-prompting backfires
+  few_shot_count: 3-5
+  reasoning_mode: adaptive_thinking
+  effort_levels: [low, medium, high, max]
+  effort_default: high
+  prefill: REJECTED (4.6 cohort)
+  sampling_params: ACCEPTED
+  xml_preference: high
+  emphasis_in_claude_md: ENDORSED (with caution — overtriggering risk)
+  emphasis_in_skill: YELLOW_FLAG
+  tendencies:
+    - "subagent reflex (overspawns)"
+    - "overengineers (extra files, abstractions)"
+    - "responsive to system prompt (calibrate carefully)"
+    - "overthinks at high effort"
+  source: "migration-guide"
+  confidence: high
+
+sonnet-4-6:
+  api_id: "claude-sonnet-4-6"
+  context_window: 1000000
+  max_output: 64000
+  ambiguity_tolerance: medium
+  optimal_density: medium
+  few_shot_count: 3-5
+  reasoning_mode: adaptive_thinking
+  effort_levels: [low, medium, high, max]
+  effort_default: high  # explicit medium for typical apps
+  prefill: REJECTED (4.6 cohort)
+  sampling_params: ACCEPTED
+  xml_preference: high
+  context_awareness: true  # tracks remaining context window
+  pricing: "$3 input / $15 output per Mtok"
+  source: "migration-guide, context-windows"
+  confidence: high
+
+haiku-4-5:
+  api_id: "claude-haiku-4-5-20251001"
+  api_alias: "claude-haiku-4-5"
+  context_window: 200000
+  max_output: 64000
+  ambiguity_tolerance: low (INFERRED)
+  optimal_density: very-high (INFERRED — smaller-model heuristic)
+  few_shot_count: 5+ (INFERRED)
+  reasoning_mode: manual_only  # NO adaptive thinking
+  effort_levels: []  # NOT supported
+  prefill: likely SUPPORTED (4.5, predates 4.6 deprecation)
+  sampling_params: ACCEPTED
+  context_awareness: true
+  designed_for: subagent_worker_role
+  release_date: "2025-10-15"
+  source: "context-windows, anthropic.com/news/claude-haiku-4-5"
+  confidence: medium  # most prompting cells INFERRED — no dedicated section in prompting guide
+  notes:
+    - "Few-shot more critical than for Opus"
+    - "Use Structured Outputs for any schema"
+    - "Add investigate-before-answering guards"
+    - "Maximum instruction density; no 'figure it out' prompting"
+    - "Can resume from compaction-aware budget signals"
+
+# ═══════════════════════════════════════════════════════════════
+# FALLBACK protocol for models without profile
+# ═══════════════════════════════════════════════════════════════
+
+fallback_rules:
+  rule: "If target_model has no profile here, inherit from sibling model of same generation"
+  inheritance_map:
+    "claude-opus-4-8": opus-4-7  # hypothetical future
+    "claude-sonnet-4-7": sonnet-4-6
+    "claude-haiku-5-0": haiku-4-5
+  effects:
+    - "Banner in report: 'Model X profile inferred from sibling Y. Confidence: low.'"
+    - "Reduce D-MODEL weight from 10% to 5% in scoring"
+    - "Mark all model-specific findings as INFERRED_HEURISTIC"
+
+# ═══════════════════════════════════════════════════════════════
+# CROSS-CUTTING UNIVERSAL TRUTHS
+# ═══════════════════════════════════════════════════════════════
+
+universal_for_all_claude_4x_models:
+  - "XML structure > markdown for prompt scaffolding"
+  - "Documents at TOP, queries at end (long-context, +30% quality)"
+  - "Ground in quotes before reasoning over long docs"
+  - "Tell what to DO, not what NOT to do"
+  - "Match prompt style to desired output style"
+  - "Role assignment matters even with 1 sentence (system prompt)"
+  - "3-5 examples wrapped in <example>/<examples> tags"
+  - "Investigate before answering for code/file claims"
+  - "Adaptive thinking recommended (Opus 4.7/4.6, Sonnet 4.6 only)"
+  - "Place images BEFORE text in multimodal user messages"

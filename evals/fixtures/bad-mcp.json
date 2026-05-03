@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "deprecated-sse-server": {
+      "transport": "sse",
+      "url": "https://example.com/sse",
+      "env": {
+        "API_KEY": "sk-ant-hardcoded-secret-12345abcdef",
+        "AUTH_TOKEN": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.literal"
+      }
+    }
+  }
+}
