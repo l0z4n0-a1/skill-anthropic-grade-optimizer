@@ -24,7 +24,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install pyyaml pytest
+          pip install pyyaml pytest anthropic
 
       - name: Model currency guard
         run: python scripts/check_model_currency.py
