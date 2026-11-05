@@ -2,6 +2,21 @@
 
 All notable changes to the anthropic-grade-optimizer skill follow [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and adhere to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.1] — 2026-07-11 — Model Currency: Opus 4.8 / Sonnet 5 / Fable 5
+
+### Changed
+- **All 39 `model_specific` rules re-derived** against the restructured Anthropic docs. Model-specific guidance moved to dedicated pages (`prompting-claude-opus-4-8`, `prompting-claude-sonnet-5`, `prompting-claude-fable-5`); every affected quote, anchor, and model scope updated. Rule count unchanged (189); flags cleared to `verified-2026-07-11`.
+- **`modulation-matrix.yaml` v1.2:** fable-5 / opus-4-8 / sonnet-5 profiles with behavioral cells sourced directly from the dedicated pages (inherited cells reduced to ambiguity_tolerance / optimal_density / few_shot_count). Fable 5 inversions encoded (effort start `high`; subagents govern-don't-encourage; over-prescription degrades).
+- **`scripts/run.py`:** `--target` choices extended to fable-5 / opus-4-8 / sonnet-5; default is now `opus-4-8`.
+- **`scripts/pass1_mechanical.py`:** api_config gates rebuilt — `is_strict_sampling` (opus-4-8/4-7, sonnet-5, fable-5), `is_strict_effort` (opus-4-8/4-7, sonnet-5 — NOT fable-5), prefill gate extended to 4.6+ incl. new family; finding strings/URLs updated to the 4.8-era sources.
+- **`references/pass2-protocol.md`:** compound `model_specific` matching semantics defined (`;` scope commentary, `NOT`/`REVERSED` exclusions); Step-4 severity calibration extended to opus-4-8 / sonnet-5 / fable-5 (with Sonnet 5 effort exception and Fable 5 drops/reversals); AR-CLAR-009 notch-up removed for 4.7 (rule re-scoped to 4.5/4.6).
+- **Snippets:** model-self-knowledge, frontend-aesthetics, steer-thinking, code-review-coverage, concise-output, subagent-spawning-4-7 — URLs, scopes, and doctrine quotes updated; Fable 5 insertion guards added where guidance reverses.
+- **SKILL.md § Target-model modulation + `references/doctrine-detail.md`:** rewritten for the current family.
+- **`references/quotes-canonical.md` / `references/gaps.md`:** quotes and gap notes synced to 2026-07-11 sources.
+
+### Validation
+- 212/212 unit tests · 15/15 eval fixtures · calibration ≥85% gate green · `check_model_currency.py` 4/4 · self-audit `--target opus-4-8`: 85/100 GATE=PASS (0 must-fix).
+
 ## [1.0.0] — 2026-05-02 — Signature Release
 
 First public release. End-to-end audit pipeline with Pass-1 + Pass-2 + calibration + CI guards.

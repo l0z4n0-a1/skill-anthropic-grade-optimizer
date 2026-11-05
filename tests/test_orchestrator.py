@@ -68,17 +68,42 @@ def test_no_exceptions_flag_changes_score():
 
 
 def test_pass2_flag_invokes_executor():
-    """--pass2 must populate bundle['pass2'] (executed=True with API key + SDK, False otherwise)."""
+    """--pass2 must populate bundle['pass2'] with a tri-state status and non-empty reason.
+
+    Valid states after --pass2 (default = host-emit path):
+      - status == 'executed'      → findings produced (host-inject path)
+      - status == 'pending_host'  → payload emitted, awaiting host LLM judging
+      - status == 'no_rules'      → artifact type has no llm-judge rules
+      - status == 'failed'        → API/SDK/key/network error (legacy --pass2-api path)
+
+    Every non-executed state MUST carry a non-empty `reason`.
+    `executed` (legacy bool) MUST be True iff status == 'executed'.
+    """
     bundle = _run([str(SELF_SKILL), "--target", "opus-4-7", "--pass2"])
     assert bundle.get("pass2") is not None, "pass2 result should be present when --pass2 is set"
     pass2 = bundle["pass2"]
-    if pass2["executed"] is False:
-        # Graceful degradation contract: must explain why in `reason`.
-        # Two valid degradation paths: missing SDK or missing API key.
-        reason = pass2.get("reason", "")
-        assert reason, "degradation must include a non-empty reason"
+
+    valid_status = {"executed", "pending_host", "no_rules", "failed"}
+    status = pass2.get("status")
+    assert status in valid_status, f"status must be one of {valid_status}; got {status!r}"
+
+    # Legacy bool alias must agree with the enum.
+    assert pass2["executed"] is (status == "executed"), \
+        "`executed` bool must mirror `status == 'executed'`"
+
+    # Every state ships a reason. Non-executed states MUST explain themselves.
+    reason = pass2.get("reason", "")
+    assert reason, f"pass2.reason must always be populated; got {reason!r}"
+
+    if status == "pending_host":
+        # Host-emit contract: payload + findings paths must be reachable.
+        handoff = pass2.get("host_handoff", {})
+        assert handoff.get("payload_path"), "pending_host must expose payload_path"
+        assert handoff.get("findings_path"), "pending_host must expose findings_path"
+    elif status == "failed":
+        # Legacy degradation path (only reachable via --pass2-api).
         assert ("ANTHROPIC_API_KEY" in reason) or ("anthropic" in reason.lower()), \
-            f"degradation reason must reference SDK or API key; got: {reason!r}"
+            f"failed state must reference SDK or API key; got: {reason!r}"
 
 
 def test_pass2_omitted_by_default():

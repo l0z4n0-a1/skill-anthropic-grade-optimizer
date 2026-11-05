@@ -18,13 +18,13 @@ For citation in reports. Each quote is verbatim and traceable to the Anthropic s
 ### On Newer-Model Calibration
 
 > "Where you might have said 'CRITICAL: You MUST use this tool when...', you can use more normal prompting like 'Use this tool when...'."
-> — *Tool usage*
+> — *Tool usage (scoped to Opus 4.5/4.6 on the live page)*
 
-> "Claude Opus 4.7 interprets prompts more literally and explicitly than Claude Opus 4.6, particularly at lower effort levels. It will not silently generalize an instruction from one item to another, and it will not infer requests you didn't make."
-> — *More literal instruction following*
+> "Claude Opus 4.8 interprets prompts literally and explicitly, particularly at lower effort levels. It does not silently generalize an instruction from one item to another, and it does not infer requests you didn't make."
+> — *prompting-claude-opus-4-8, More literal instruction following (same sentence for Sonnet 5 on its page; updated 2026-07-11)*
 
 > "If you need Claude to apply an instruction broadly, state the scope explicitly (for example, 'Apply this formatting to every section, not just the first one')."
-> — *More literal instruction following*
+> — *prompting-claude-opus-4-8, More literal instruction following*
 
 ### On XML Structure
 

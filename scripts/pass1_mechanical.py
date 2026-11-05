@@ -653,8 +653,17 @@ def audit_api_config(path: Path, content: str, target_model: str = None) -> list
         m = re.search(r'model\s*=\s*["\']([\w-]+)', content)
         target_model = m.group(1) if m else "unknown"
 
-    is_4_7 = bool(re.search(r"opus-4-7|claude-opus-4-7", target_model, re.IGNORECASE))
-    is_4_6_plus = bool(re.search(r"opus-4-[67]|sonnet-4-6|claude-(opus|sonnet)-4-[67]",
+    # Model-capability gates (re-derived 2026-07-11 against prompting-claude-opus-4-8 /
+    # prompting-claude-sonnet-5 / migration-guide):
+    #   strict_sampling — non-default temperature/top_p/top_k → 400
+    #   strict_effort   — "respects effort levels strictly" + xhigh-for-coding guidance
+    #   prefill_reject  — last-assistant-turn prefill → 400 (all 4.6+ incl. Fable 5)
+    is_4_7 = bool(re.search(r"opus-4-[78]", target_model, re.IGNORECASE))  # opus effort/sampling cohort (4.7 + 4.8, same surface)
+    is_strict_sampling = bool(re.search(r"opus-4-[78]|sonnet-5|fable-5|mythos-5",
+                                        target_model, re.IGNORECASE))
+    is_strict_effort = bool(re.search(r"opus-4-[78]|sonnet-5",
+                                      target_model, re.IGNORECASE))  # NOT fable-5 (start high, not xhigh)
+    is_4_6_plus = bool(re.search(r"opus-4-[678]|sonnet-4-6|sonnet-5|fable-5|mythos",
                                   target_model, re.IGNORECASE))
 
     # AR-MODEL-002: prefill on 4.6+ → 400 (HARD, zero-tolerance)
@@ -687,10 +696,10 @@ def audit_api_config(path: Path, content: str, target_model: str = None) -> list
         re.search(r'["\']effort["\']\s*:\s*["\'](\w+)', content) or
         re.search(r'\beffort\s*=\s*["\'](\w+)', content)
     )
-    if is_4_7 and has_effort:
+    if is_strict_effort and has_effort:
         effort_val = has_effort.group(1).lower()
         if effort_val in ("low", "medium"):
-            # AR-REASON-017: effort strict on 4.7 (severity_amplification when coding)
+            # AR-REASON-017: effort strict on 4.8/4.7/Sonnet 5 (severity_amplification when coding)
             has_coding_signal = bool(re.search(
                 r"\b(coding|code|implement|refactor|debug|agent)\b",
                 content, re.IGNORECASE))
@@ -699,25 +708,26 @@ def audit_api_config(path: Path, content: str, target_model: str = None) -> list
             impact = -10 if has_coding_signal else -3
             findings.append(make_finding(
                 "F-REASON-017", "AR-REASON-017", "D-REASON", sev, triage,
-                "On Opus 4.7, effort levels are strict — low/medium scope tighter (under-thinking risk on coding/agentic)",
-                "https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/claude-prompting-best-practices#calibrating-effort-and-thinking-depth",
-                "Claude Opus 4.7 respects effort levels strictly, especially at the low end. At low and medium, the model scopes its work to what was asked rather than going above and beyond.",
-                f"effort={effort_val} on opus-4-7" + (" with coding/agentic signal (amplified)" if has_coding_signal else ""),
+                "On Opus 4.8/4.7 and Sonnet 5, effort levels are strict — low/medium scope tighter (under-thinking risk on coding/agentic)",
+                "https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/prompting-claude-opus-4-8#calibrating-effort-and-thinking-depth",
+                "Claude Opus 4.8 respects effort levels strictly, especially at the low end. At `low` and `medium`, the model scopes its work to what was asked rather than going above and beyond.",
+                f"effort={effort_val} on {target_model}" + (" with coding/agentic signal (amplified)" if has_coding_signal else ""),
                 "api_config.effort", "code-check", impact))
 
-    # AR-REASON-018: xhigh as default for coding/agentic
+    # AR-REASON-018: xhigh as default for coding/agentic (Opus 4.8/4.7 only —
+    # Sonnet 5 keeps the high default; Fable 5 inverts to high)
     if is_4_7 and has_effort:
         has_coding = bool(re.search(r"\b(coding|agent|tool[- ]use)\b", content, re.IGNORECASE))
         if has_coding and has_effort.group(1).lower() not in ("xhigh", "high", "max"):
             findings.append(make_finding(
                 "F-REASON-018", "AR-REASON-018", "D-REASON", "soft", "🟢",
-                "On Opus 4.7, start with xhigh effort for coding/agentic; minimum high for intelligence-sensitive",
-                "https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/claude-prompting-best-practices#calibrating-effort-and-thinking-depth",
-                "Start with the new xhigh effort level for coding and agentic use cases, and use a minimum of high effort for most intelligence-sensitive use cases.",
+                "On Opus 4.8/4.7, start with xhigh effort for coding/agentic; minimum high for intelligence-sensitive",
+                "https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/prompting-claude-opus-4-8#calibrating-effort-and-thinking-depth",
+                "Start with the `xhigh` effort level for coding and agentic use cases, and use a minimum of `high` effort for most intelligence-sensitive use cases.",
                 f"effort={has_effort.group(1)} below recommended xhigh/high for coding workload",
                 "api_config.effort", "code-check", -3))
 
-    # AR-MODEL-004: max_tokens >=64k at max/xhigh
+    # AR-MODEL-004: max_tokens >=64k at max/xhigh (Opus 4.8/4.7)
     has_max_tokens = re.search(r"max_tokens\s*=\s*(\d+)", content)
     if is_4_7 and has_effort and has_max_tokens:
         eff = has_effort.group(1).lower()
@@ -725,9 +735,9 @@ def audit_api_config(path: Path, content: str, target_model: str = None) -> list
         if eff in ("max", "xhigh") and mt < 64000:
             findings.append(make_finding(
                 "F-MODEL-004", "AR-MODEL-004", "D-MODEL", "soft", "🟢",
-                "On Opus 4.7 at max/xhigh effort, set max_tokens >= 64k",
-                "https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/claude-prompting-best-practices#calibrating-effort-and-thinking-depth",
-                "If you are running Claude Opus 4.7 at max or xhigh effort, set a large max output token budget. We recommend starting at 64k tokens.",
+                "On Opus 4.8/4.7 at max/xhigh effort, set max_tokens >= 64k",
+                "https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/prompting-claude-opus-4-8#calibrating-effort-and-thinking-depth",
+                "If you are running Claude Opus 4.8 at `max` or `xhigh` effort, set a large max output token budget so the model has room to think and act across its subagents and tool calls. Start at 64k tokens and tune from there.",
                 f"effort={eff}, max_tokens={mt} (< 64000 recommended)",
                 "api_config.max_tokens", "code-check", -3))
 
@@ -753,17 +763,17 @@ def audit_api_config(path: Path, content: str, target_model: str = None) -> list
             ],
             group="prefill-migration"))
 
-    # AP-15: sampling params on Opus 4.7 → 400 (HARD)
-    if is_4_7:
+    # AP-15: non-default sampling params on Opus 4.8/4.7, Sonnet 5, Fable 5 → 400 (HARD)
+    if is_strict_sampling:
         for param in ("temperature", "top_p", "top_k"):
             m = re.search(rf"\b{param}\s*=\s*([\d.]+)", content)
             if m:
                 findings.append(make_finding(
                     f"F-AP-15-{param}", "AR-MODEL-002", "D-MODEL", "hard", "🔴",
-                    f"Sampling param '{param}' on Opus 4.7 → 400 error",
-                    "https://platform.claude.com/docs/en/about-claude/models/whats-new-claude-4-7",
-                    f"{param}, top_p, top_k → 400 error (sampling params not accepted) on opus-4-7",
-                    f"{param}={m.group(1)} on opus-4-7",
+                    f"Sampling param '{param}' on {target_model} → 400 error",
+                    "https://platform.claude.com/docs/en/about-claude/models/migration-guide",
+                    f"Setting temperature, top_p, or top_k to a non-default value returns a 400 error (Opus 4.8/4.7, Sonnet 5, Fable 5)",
+                    f"{param}={m.group(1)} on {target_model}",
                     f"api_config.{param}", "code-check", -15))
 
     # AR-VISION-001: images BEFORE text in user message
@@ -908,9 +918,9 @@ def audit_prompt(path: Path, content: str) -> list:
     if legacy_scaffold:
         findings.append(make_finding(
             "F-MODEL-014", "AR-MODEL-014", "D-MODEL", "soft", "🟢",
-            "Remove legacy 'after N tool calls, summarize' scaffolding — Opus 4.7 emits higher-quality progress updates by default",
-            "https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/claude-prompting-best-practices#user-facing-progress-updates",
-            "Claude Opus 4.7 provides more regular, higher-quality updates to the user throughout long agentic traces. If you've added scaffolding to force interim status messages ('After every 3 tool calls, summarize progress'), try removing it.",
+            "Remove legacy 'after N tool calls, summarize' scaffolding — Opus 4.8 / Sonnet 5 / 4.7 emit higher-quality progress updates by default",
+            "https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/prompting-claude-opus-4-8#user-facing-progress-updates",
+            "Claude Opus 4.8 provides more regular, higher-quality updates to the user throughout long agentic traces. If you've added scaffolding to force interim status messages ('After every 3 tool calls, summarize progress'), try removing it.",
             f"legacy scaffolding phrase: '{legacy_scaffold.group(0)[:80]}'",
             "scattered", "regex", -3))
 
@@ -931,9 +941,9 @@ def audit_prompt(path: Path, content: str) -> list:
         if not has_guidance:
             findings.append(make_finding(
                 "F-MODEL-015", "AR-MODEL-015", "D-MODEL", "soft", "🟢",
-                "Provide explicit guidance on when subagents are/aren't desirable (Opus 4.7 spawns fewer by default)",
-                "https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/claude-prompting-best-practices#controlling-subagent-spawning",
-                "Claude Opus 4.7 tends to spawn fewer subagents by default. However, this behavior is steerable through prompting; give Claude Opus 4.7 explicit guidance around when subagents are desirable.",
+                "Provide explicit guidance on when subagents are/aren't desirable (Opus 4.8/4.7 spawn fewer by default; REVERSED on Fable 5 — govern, don't encourage)",
+                "https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/prompting-claude-opus-4-8#controlling-subagent-spawning",
+                "Claude Opus 4.8 tends to spawn fewer subagents by default. However, this behavior is steerable through prompting; give Claude Opus 4.8 explicit guidance around when subagents are desirable.",
                 "subagent orchestration mentioned without explicit when-to-spawn guidance",
                 "scattered", "regex", -3))
 
@@ -952,8 +962,8 @@ def audit_prompt(path: Path, content: str) -> list:
         if has_negation and not (has_concrete_palette or has_propose_options):
             findings.append(make_finding(
                 "F-MODEL-016", "AR-MODEL-016", "D-MODEL", "soft", "🟢",
-                "Generic design negation bounces on Opus 4.7 — specify concrete alternative or ask model to propose options",
-                "https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/claude-prompting-best-practices#design-and-frontend-defaults",
+                "Generic design negation bounces on Opus 4.8 / Sonnet 5 / 4.7 — specify concrete alternative or ask model to propose options",
+                "https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/prompting-claude-opus-4-8#design-and-frontend-defaults",
                 "This default is persistent. Generic instructions ('don't use cream,' 'make it clean and minimal') tend to shift the model to a different fixed palette rather than producing variety.",
                 f"design negation '{has_negation.group(0)}' without concrete palette or propose-options pattern",
                 "scattered", "regex", -3))
@@ -969,9 +979,9 @@ def audit_prompt(path: Path, content: str) -> list:
         if recall_killer:
             findings.append(make_finding(
                 "F-MODEL-018", "AR-MODEL-018", "D-MODEL", "hard", "🔴",
-                "Code-review harness regression: 'be conservative'/'only high-severity' reduces recall on 4.7 — use 'report every issue, downstream filter ranks them'",
-                "https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/claude-prompting-best-practices#code-review-harnesses",
-                "When a review prompt says things like 'only report high-severity issues,' 'be conservative,' or 'don't nitpick,' Claude Opus 4.7 may follow that instruction more faithfully than earlier models did... Report every issue you find, including ones you are uncertain about or consider low-severity.",
+                "Code-review harness regression: 'be conservative'/'only high-severity' reduces recall on Opus 4.8 / Sonnet 5 / 4.7 — use 'report every issue, downstream filter ranks them'",
+                "https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/prompting-claude-opus-4-8#code-review-harnesses",
+                "When a review prompt says things like 'only report high-severity issues,' 'be conservative,' or 'don't nitpick,' Claude Opus 4.8 may follow that instruction more faithfully than earlier models did... Report every issue you find, including ones you are uncertain about or consider low-severity.",
                 f"recall-killing phrase: '{recall_killer.group(0)}'",
                 "scattered", "regex", -12))
 
@@ -985,8 +995,8 @@ def audit_prompt(path: Path, content: str) -> list:
             findings.append(make_finding(
                 "F-REASON-019", "AR-REASON-019", "D-REASON", "soft", "🟢",
                 "[Pass-2 candidate] Adaptive thinking mentioned without steering — verify whether steering is needed for workload",
-                "https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/claude-prompting-best-practices#calibrating-effort-and-thinking-depth",
-                "The triggering behavior for adaptive thinking is steerable. If you find the model thinking more often than you'd like — which can happen with large or complex system prompts — add guidance to steer it.",
+                "https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/prompting-claude-opus-4-8#calibrating-effort-and-thinking-depth",
+                "The triggering behavior for adaptive thinking is steerable. If you find the model thinking more often than you'd like, which can happen with large or complex system prompts, add guidance to steer it.",
                 "thinking mentioned in long prompt without steering verbs (respond directly/when in doubt)",
                 "scattered", "hybrid", -2,
                 requires_pass2_grade=True))

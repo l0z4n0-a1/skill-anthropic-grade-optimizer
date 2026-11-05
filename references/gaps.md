@@ -76,8 +76,8 @@ Most rules are expert recommendation, not eval-backed. Notable exceptions: "30% 
 - Sonnet 4.6 long-context premium status (medium confidence: assumed no premium)
 - Adaptive-thinking interaction with system-prompt size
 - Haiku 4.5 prefill removal status (4.5 named; doc says "starting 4.6" — ambiguous)
-- Opus 4.7 context-awareness (NOT listed alongside Sonnet 4.6 / Haiku 4.5 — possible omission)
-- `task_budget` per-model availability (Opus 4.7 only?)
+- Opus-tier context-awareness (2026-07-11: live page lists Sonnet 5 / Sonnet 4.6 / Sonnet 4.5 / Haiku 4.5 — Opus models still absent; treat as confirmed-absent rather than omission)
+- `task_budget` per-model availability (2026-07-11: Fable 5 / Sonnet 5 / Opus 4.8 / 4.7 per migration guide — beta `task-budgets-2026-03-13`; no dedicated rule yet)
 - MCP server authoring best practices (modelcontextprotocol.io has spec; Anthropic-Claude-Code-specific style guide absent)
 - Hook execution order when multiple PostToolUse hooks match (PreToolUse precedence is documented; PostToolUse is not)
 - Subagent description char budget (skills have 1536; subagents have no published cap)
