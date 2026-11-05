@@ -349,10 +349,10 @@ def coverage_caveat_lines(rules_meta: dict, pass2_executed: bool) -> list:
         "",
     ]
     if not pass2_executed:
-        lines.append("Pass 1 (fast, mechanical) ran. Pass 2 (deep, AI-judged) was skipped —")
-        lines.append("add --pass2 with an ANTHROPIC_API_KEY for qualitative checks (~2¢ per audit).")
+        lines.append("Pass 1 (fast, mechanical) ran. Pass 2 (deep, host-judged) was skipped —")
+        lines.append("add --pass2 to emit a payload for the host LLM (no API, no key required).")
     else:
-        lines.append("Both Pass 1 (mechanical) and Pass 2 (AI-judged) ran.")
+        lines.append("Both Pass 1 (mechanical) and Pass 2 (host-judged) ran.")
     return lines
 
 

@@ -3,14 +3,32 @@
 # Bump the version below + add a profile when a new Anthropic model ships;
 # scripts/check_model_currency.py guards against drift.
 
-version: 1.0
-date: 2026-05-02
+version: 1.2
+date: 2026-07-11  # v1.1: added fable-5, sonnet-5, opus-4-8 profiles. v1.2 (same day): opus-4-8 and sonnet-5 behavioral cells re-sourced directly from the dedicated prompting pages (prompting-claude-opus-4-8, prompting-claude-sonnet-5) — derived_from now covers only ambiguity_tolerance/optimal_density/few_shot_count
 
 # ═══════════════════════════════════════════════════════════════
 # CRITICAL ANTI-PATTERNS (auto-flag 🔴 by target_model)
 # ═══════════════════════════════════════════════════════════════
 
 api_breaking_changes:
+  fable-5:
+    - "temperature, top_p, top_k non-default → 400 error (sampling params not accepted)"
+    - "assistant message prefill → 400 error"
+    - "thinking:{type:disabled} → NOT supported (adaptive thinking always on)"
+    - "raw chain of thought never returned — thinking.display: summarized|omitted (default omitted)"
+    - "safety classifiers can decline requests → stop_reason:'refusal' on HTTP 200; plan fallback (e.g. to opus-4-8)"
+    - "'echo/transcribe your reasoning' instructions can trigger reasoning_extraction refusals — audit skills on migration"
+  opus-4-8:
+    - "temperature, top_p, top_k non-default → 400 error (sampling params not accepted)"
+    - "thinking:{type:enabled, budget_tokens:N} → 400 error (manual extended thinking)"
+    - "assistant message prefill → 400 error"
+    - "requests without thinking field run WITHOUT thinking — set thinking:{type:adaptive} explicitly"
+  sonnet-5:
+    - "temperature, top_p, top_k non-default → 400 error (sampling params not accepted)"
+    - "thinking:{type:enabled, budget_tokens:N} → 400 error (manual extended thinking)"
+    - "assistant message prefill → 400 error"
+    - "adaptive thinking ON by default (unlike sonnet-4-6) — pass thinking:{type:disabled} to turn off"
+    - "new tokenizer: ~30% more tokens than sonnet-4-6 — re-baseline cost/latency"
   opus-4-7:
     - "temperature, top_p, top_k → 400 error (sampling params not accepted)"
     - "thinking:{type:enabled, budget_tokens:N} → 400 error (manual extended thinking)"
@@ -31,7 +49,106 @@ api_breaking_changes:
 # PROMPTING DIRECTIVES per model (condensed)
 # ═══════════════════════════════════════════════════════════════
 
+fable-5:
+  api_id: "claude-fable-5"
+  api_alias: "claude-fable-5"
+  context_window: 1000000   # 1M by default, no beta header, no long-context premium
+  max_output: 128000
+  pricing: "$10 input / $50 output per Mtok"
+  ambiguity_tolerance: high  # "performs well when given complex, multi-threaded requests and asked to determine next steps"
+  optimal_density: low  # "skills developed for prior models are often too prescriptive... can degrade output quality"
+  few_shot_count: 3-5
+  derived_from: opus-4-7  # few_shot_count only — no dedicated few-shot guidance found
+  unverified: true        # applies to few_shot_count cell
+  reasoning_mode: adaptive_thinking_always_on  # only mode; thinking:{type:disabled} rejected
+  thinking_display: "summarized | omitted (default) — raw CoT never returned"
+  effort_levels: [low, medium, high, xhigh, max]
+  effort_default: high
+  effort_recommended: "high for most tasks incl. workloads that ran xhigh on opus-4-8; xhigh only for most capability-sensitive"
+  tone: "lead with outcome; brief instruction beats enumerating behaviors"
+  verbosity: task-calibrated (can elaborate at higher effort — short brevity instruction suffices)
+  literal_interpretation: false  # strong instruction following; steer with brief instructions
+  instruction_following: "improved enough that a brief instruction replaces enumerating each behavior"
+  prefill: REJECTED
+  sampling_params: REJECTED
+  xml_preference: high
+  subagent_behavior: "dispatches parallel subagents more readily; prefer async orchestration + long-lived subagents"
+  long_run_guards: "ground progress claims against tool results; audit-before-report nearly eliminates fabricated status"
+  refusals: "safety classifiers (offensive cyber, bio, reasoning extraction) → stop_reason:refusal; fallback to opus-4-8"
+  tokenizer_inflation: "same tokenizer as opus-4-7 (~30% more tokens vs pre-4.7 models); ~unchanged vs opus-4-8"
+  latency: "slower — individual requests can run many minutes at higher effort; adjust client timeouts"
+  max_tokens_guidance: "at high/xhigh set large max_tokens (hard limit on thinking + response)"
+  data_retention: "30-day retention; not available under ZDR (Covered Model)"
+  source: "platform.claude.com/docs/en/about-claude/models/introducing-claude-fable-5-and-claude-mythos-5, /docs/en/build-with-claude/prompt-engineering/prompting-claude-fable-5, /docs/en/build-with-claude/effort, /docs/en/about-claude/models/overview"
+  confidence: high  # all cells sourced 2026-07-11 except where derived_from noted
+
+opus-4-8:
+  api_id: "claude-opus-4-8"
+  api_alias: "claude-opus-4-8"
+  context_window: 1000000
+  max_output: 128000  # 300k on Batch API with output-300k-2026-03-24 beta header
+  pricing: "$5 input / $25 output per Mtok"
+  ambiguity_tolerance: low
+  derived_from: opus-4-7  # ambiguity_tolerance, optimal_density, few_shot_count only
+  unverified: true        # applies to the 3 inherited cells above
+  optimal_density: high
+  few_shot_count: 3-5
+  reasoning_mode: adaptive_thinking  # NOT on by default — "thinking is off unless you explicitly set thinking:{type:adaptive}"
+  effort_levels: [low, medium, high, xhigh, max]
+  effort_default: high  # "defaults to high on all surfaces, including the Claude API, Claude Code, and claude.ai"
+  effort_recommended: "xhigh for coding/agentic; minimum high for intelligence-sensitive; 'Effort is likely to be more important for this model than for any prior Opus'"
+  effort_strictness: "respects effort levels strictly, especially at the low end — under-thinking risk at low on moderately complex tasks"
+  max_tokens_guidance: "at xhigh/max effort start at 64k max_tokens ('room to think and act across its subagents and tool calls')"
+  tone: "direct, opinionated style with minimal validation-forward phrasing and sparing emoji use"
+  verbosity: task-calibrated (not fixed)
+  literal_interpretation: true  # "does not silently generalize an instruction from one item to another"
+  tool_use_triggering: "tendency to favor reasoning over tool calls; raise effort (high/xhigh) or prompt explicitly for more tool use"
+  subagent_behavior: "tends to spawn fewer subagents by default; steerable — give explicit guidance on when subagents are desirable"
+  progress_updates: "regular, higher-quality updates by default — remove 'after every N tool calls, summarize' scaffolding"
+  code_review: "follows 'only high-severity'/'be conservative' literally — recall drops; prompt for coverage, filter downstream"
+  design_defaults: "persistent house style (warm cream ~#F4F1EA, serif display, terracotta accent); generic negation bounces — specify concrete alternative or propose-4-directions"
+  prefill: REJECTED
+  sampling_params: REJECTED  # temperature/top_p/top_k non-default → 400
+  xml_preference: high
+  image_max_resolution: 2576px  # high-resolution tier, 4784 visual tokens, automatic (vision#resolution-and-token-cost)
+  tokenizer_inflation: "same tokenizer as opus-4-7 (1.0x-1.35x vs pre-4.7 models)"
+  source: "platform.claude.com/docs/en/build-with-claude/prompt-engineering/prompting-claude-opus-4-8, /docs/en/about-claude/models/migration-guide, /docs/en/build-with-claude/effort, /docs/en/about-claude/models/overview, /docs/en/build-with-claude/vision"
+  confidence: high  # API + behavioral cells sourced 2026-07-11 from the dedicated prompting-claude-opus-4-8 page; only the 3 cells under derived_from remain inherited
+
+sonnet-5:
+  api_id: "claude-sonnet-5"
+  api_alias: "claude-sonnet-5"
+  context_window: 1000000
+  max_output: 128000  # 300k on Batch API with output-300k-2026-03-24 beta header
+  pricing: "$3 input / $15 output per Mtok (intro $2/$10 through 2026-08-31)"
+  ambiguity_tolerance: medium
+  derived_from: sonnet-4-6  # ambiguity_tolerance, optimal_density, few_shot_count only
+  unverified: true          # applies to the 3 inherited cells above
+  optimal_density: medium
+  few_shot_count: 3-5
+  reasoning_mode: adaptive_thinking_default_on  # "Requests without a thinking field run with adaptive thinking" (change vs sonnet-4-6); thinking:{type:disabled} to turn off
+  effort_levels: [low, medium, high, xhigh, max]  # xhigh new vs sonnet-4-6
+  effort_default: high  # on Claude API and Claude Code
+  effort_recommended: "high default; xhigh for hardest coding/agentic; cross-model mapping: sonnet-5@medium ≈ sonnet-4-6@high, sonnet-5@high ≈ sonnet-4-6@max"
+  effort_strictness: "respects effort levels strictly, especially at the low end — under-thinking risk at low on moderately complex tasks"
+  max_tokens_guidance: "leave headroom at high/xhigh/max — thinking shares the budget, and the new tokenizer means 4.6-tuned max_tokens may truncate (stop_reason: max_tokens symptom)"
+  literal_interpretation: true  # same sentence as opus-4-8 on the sonnet-5 page
+  verbosity: task-calibrated (not fixed)
+  tool_use_triggering: "MORE agentic than sonnet-4-6 by default (reaches for tools + self-verification readily); EXCEPTION: with thinking disabled it under-reaches — add explicit nudge"
+  progress_updates: "regular, higher-quality updates by default — remove forced-summary scaffolding"
+  code_review: "same recall caveat as opus-4-8 — conservative-reporting prompts depress measured recall"
+  design_defaults: "may settle into a consistent default style; propose-options pattern is the recommended substitute for temperature-driven variety (temperature not accepted)"
+  prefill: REJECTED
+  sampling_params: REJECTED  # temperature/top_p/top_k non-default → 400 ("This constraint is new for Sonnet-class models")
+  xml_preference: high
+  image_max_resolution: 2576px  # high-resolution tier, 4784 visual tokens, automatic; computer use via computer_20251124
+  context_awareness: true  # "Claude Sonnet 5 ... feature[s] context awareness" (best-practices#context-awareness-and-multi-window-workflows)
+  tokenizer_inflation: "new tokenizer: ~30% more tokens than sonnet-4-6"
+  source: "platform.claude.com/docs/en/build-with-claude/prompt-engineering/prompting-claude-sonnet-5, /docs/en/about-claude/models/migration-guide, /docs/en/build-with-claude/effort, /docs/en/about-claude/models/overview, /docs/en/build-with-claude/vision"
+  confidence: high  # API + behavioral cells sourced 2026-07-11 from the dedicated prompting-claude-sonnet-5 page; only the 3 cells under derived_from remain inherited
+
 opus-4-7:
+  status: legacy  # per models/overview "Legacy models" accordion, 2026-07-11
   api_id: "claude-opus-4-7"
   context_window: 1000000
   max_output: 128000
@@ -57,6 +174,7 @@ opus-4-7:
   confidence: high
 
 opus-4-6:
+  status: legacy  # per models/overview "Legacy models" accordion, 2026-07-11
   api_id: "claude-opus-4-6"
   context_window: 1000000
   max_output: 128000
@@ -80,6 +198,7 @@ opus-4-6:
   confidence: high
 
 sonnet-4-6:
+  status: legacy  # per models/overview "Legacy models" accordion, 2026-07-11
   api_id: "claude-sonnet-4-6"
   context_window: 1000000
   max_output: 64000
@@ -128,8 +247,10 @@ haiku-4-5:
 fallback_rules:
   rule: "If target_model has no profile here, inherit from sibling model of same generation"
   inheritance_map:
-    "claude-opus-4-8": opus-4-7  # hypothetical future
-    "claude-sonnet-4-7": sonnet-4-6
+    # (claude-opus-4-8 / claude-sonnet-5 / claude-fable-5 now have real profiles above — removed 2026-07-11)
+    "claude-fable-5-1": fable-5   # hypothetical future
+    "claude-opus-4-9": opus-4-8
+    "claude-sonnet-5-1": sonnet-5
     "claude-haiku-5-0": haiku-4-5
   effects:
     - "Banner in report: 'Model X profile inferred from sibling Y. Confidence: low.'"
@@ -149,5 +270,5 @@ universal_for_all_claude_4x_models:
   - "Role assignment matters even with 1 sentence (system prompt)"
   - "3-5 examples wrapped in <example>/<examples> tags"
   - "Investigate before answering for code/file claims"
-  - "Adaptive thinking recommended (Opus 4.7/4.6, Sonnet 4.6 only)"
+  - "Adaptive thinking recommended (Fable 5 always-on; Sonnet 5 default-on; Opus 4.8/4.7/4.6, Sonnet 4.6 opt-in; Haiku 4.5 NOT supported)"
   - "Place images BEFORE text in multimodal user messages"

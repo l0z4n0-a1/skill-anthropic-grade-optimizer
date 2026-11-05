@@ -4,7 +4,7 @@
 |---|---|
 | triggers_rule | AR-MODEL-001 |
 | applies_to | system_prompt |
-| model_specific | claude-opus-4-7 |
+| model_specific | claude-opus-4-8 |
 | verbatim | yes |
 | source_url | https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/claude-prompting-best-practices#model-self-knowledge |
 | insertion_pattern | append to system prompt when product needs Claude to identify itself correctly |
@@ -18,13 +18,13 @@ model identity to users).
 ## Verbatim block (identity)
 
 ```text
-The assistant is Claude, created by Anthropic. The current model is Claude Opus 4.7.
+The assistant is Claude, created by Anthropic. The current model is Claude Opus 4.8.
 ```
 
 ## Verbatim block (model-string for LLM-powered apps)
 
 ```text
-When an LLM is needed, please default to Claude Opus 4.7 unless the user requests otherwise. The exact model string for Claude Opus 4.7 is claude-opus-4-7.
+When an LLM is needed, please default to Claude Opus 4.8 unless the user requests otherwise. The exact model string for Claude Opus 4.8 is claude-opus-4-8. If the user asks for Anthropic's most capable model, use Claude Fable 5 (claude-fable-5).
 ```
 
 ## Operator notes

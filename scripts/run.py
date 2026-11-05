@@ -2,7 +2,7 @@
 """
 run.py — Anthropic-Grade Optimizer Orchestrator
 
-USO: python run.py <artifact_path> [--target opus-4-7] [--mode audit] [--verbose] [--fast] [--push-ceiling]
+USO: python run.py <artifact_path> [--target opus-4-8] [--mode audit] [--verbose] [--fast] [--push-ceiling]
 
 QUANDO USAR: One-shot entry point for the skill. Chains:
   1. classify_artifact.py
@@ -23,6 +23,7 @@ import json
 import os
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 try:
@@ -126,7 +127,7 @@ def apply_exceptions(findings: list, no_exceptions: bool) -> tuple[list, list]:
 
 def emit_report(classification: dict, pass1: dict, score_active: dict, score_raw: dict,
                 exempted: list, rules_meta: dict, opts: dict,
-                pass2_executed: bool = False) -> str:
+                pass2_executed: bool = False, pass2: dict | None = None) -> str:
     """Render the audit as a human-first report.
 
     Plain English by default. --verbose adds rule_ids, severities, technical detail.
@@ -138,7 +139,9 @@ def emit_report(classification: dict, pass1: dict, score_active: dict, score_raw
     # ── Compute the human-facing data slice ────────────────────────────
     raw_score = score_raw.get("score", 0)
     active_score = score_active.get("score", raw_score)
-    findings_all = pass1.get("findings", [])
+    findings_all = list(pass1.get("findings", []))
+    if pass2 and pass2.get("findings"):
+        findings_all.extend(pass2.get("findings", []))
     active_findings = [f for f in findings_all if f.get("rule_id") not in DECLARED_EXCEPTIONS] \
         if not opts['no_exceptions'] else findings_all
     must_fix = [f for f in active_findings if f.get("triage") == "🔴"]
@@ -235,10 +238,23 @@ def emit_report(classification: dict, pass1: dict, score_active: dict, score_raw
 
     # ── 7. Pass-2 status — show value even when skipped ────────────────
     if not pass2_executed:
+        handoff = (opts.get("pass2_handoff") or {})
         lines.append(lib_ux.render_rule(label="Want a deeper review?"))
-        lines.append("  Pass 2 uses Claude to judge qualitative rules that regex cannot —")
+        lines.append("  Pass 2 judges qualitative rules that regex cannot —")
         lines.append("  things like \"is this clear?\", \"is the tone consistent?\".")
-        lines.append("  Costs ~2¢ per audit. Add --pass2 with an ANTHROPIC_API_KEY.")
+        if handoff.get("payload_path"):
+            payload = handoff["payload_path"]
+            findings_path = str(Path(payload).with_suffix(".findings.json"))
+            lines.append("")
+            lines.append("  Host-native Pass-2 (no API, no key — uses the LLM running this session):")
+            lines.append(f"    1. Payload emitted: {payload}")
+            lines.append(f"       ({handoff.get('rules_count', '?')} llm-judge rules to evaluate)")
+            lines.append(f"    2. Read it, judge each rule, write `violated` findings to:")
+            lines.append(f"       {findings_path}")
+            lines.append(f"    3. Re-run with: --pass2-findings {findings_path}")
+        else:
+            lines.append("  Add --pass2 to emit a payload for the host LLM to judge in-context.")
+            lines.append("  (No API key required when running inside Claude Code.)")
         lines.append("")
 
     # ── 8. Coverage caveat — honest, plain English ─────────────────────
@@ -284,6 +300,47 @@ def _render_finding(f: dict, verbose: bool) -> list:
     return out
 
 
+# ──────────────────────────────────────────────────────────────────────────
+# Pass-2 host-emit payload management — collision-free paths + TTL cleanup.
+# ──────────────────────────────────────────────────────────────────────────
+
+import tempfile  # local import so module load stays cheap when --pass2 unused
+
+_PAYLOAD_TTL_SECONDS = 3600  # orphan payloads older than 1h are reaped
+
+
+def _payload_path_for(artifact_path: Path) -> Path:
+    """Return a collision-free payload path next to the artifact, or in temp.
+
+    Uses PID + the artifact stem so concurrent audits never overwrite each
+    other. Falls back to the system temp dir if the artifact's parent is not
+    writable (e.g. read-only deployments).
+    """
+    name = f".{artifact_path.stem}.{os.getpid()}.pass2-payload.json"
+    parent = artifact_path.parent
+    if os.access(parent, os.W_OK):
+        return parent / name
+    return Path(tempfile.gettempdir()) / name
+
+
+def _cleanup_stale_payloads(directory: Path) -> None:
+    """Reap any *.pass2-payload.json (and matching .findings.json) older than TTL.
+
+    Best-effort: silently skips files we can't stat or unlink. Keeps the
+    working directory tidy without blowing up the audit on permission errors.
+    """
+    try:
+        now = time.time()
+        for p in directory.glob(".*.pass2-payload*.json"):
+            try:
+                if now - p.stat().st_mtime > _PAYLOAD_TTL_SECONDS:
+                    p.unlink()
+            except OSError:
+                continue
+    except OSError:
+        pass
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Anthropic-Grade Optimizer — orchestrator entry point"
@@ -291,9 +348,11 @@ def main():
     parser.add_argument("path", type=Path, help="Path to artifact file")
     parser.add_argument(
         "--target",
-        default="opus-4-7",
-        choices=["opus-4-7", "opus-4-6", "sonnet-4-6", "haiku-4-5"],
-        help="Target Claude model (default: opus-4-7)",
+        default="opus-4-8",
+        choices=["fable-5", "opus-4-8", "sonnet-5",           # current (matrix v1.2)
+                 "opus-4-7", "opus-4-6", "sonnet-4-6",        # legacy profiles
+                 "haiku-4-5"],
+        help="Target Claude model (default: opus-4-8)",
     )
     parser.add_argument(
         "--mode",
@@ -307,9 +366,13 @@ def main():
     parser.add_argument("--no-exceptions", action="store_true",
                         help="Disable operator-declared exceptions (strict score)")
     parser.add_argument("--pass2", action="store_true",
-                        help="Execute Pass-2 qualitative audit via Claude API (requires ANTHROPIC_API_KEY)")
+                        help="Emit Pass-2 judging payload for the host LLM (no API, no key)")
+    parser.add_argument("--pass2-findings", type=Path, default=None,
+                        help="Inject host-produced Pass-2 findings JSON and merge into bundle")
+    parser.add_argument("--pass2-api", action="store_true",
+                        help="LEGACY: use external Anthropic API for Pass-2 (requires SDK + key)")
     parser.add_argument("--pass2-max-rules", type=int, default=None,
-                        help="Cap number of llm-judge rules sent to Pass-2 (cost control)")
+                        help="Cap number of llm-judge rules sent to Pass-2 (relevance, not cost)")
     parser.add_argument("--plain", action="store_true",
                         help="Emit only the parseable summary line (for CI/scripts)")
     parser.add_argument("--json-out", type=Path, help="Save full bundle as JSON")
@@ -341,13 +404,57 @@ def main():
 
     all_findings = list(pass1.get("findings", []))
     pass2_result = None
-    if args.pass2:
-        p2_args = [str(args.path), "--type", artifact_type, "--target", f"claude-{args.target}"]
+
+    # Inject path: host LLM has already produced findings — merge them now.
+    if args.pass2_findings:
+        if not args.pass2_findings.exists():
+            print(f"Error: --pass2-findings not found: {args.pass2_findings}", file=sys.stderr)
+            sys.exit(5)
+        p2_args = [str(args.path), "--type", artifact_type, "--inject",
+                   "--findings-in", str(args.pass2_findings)]
+        pass2_result = run_script(scripts_dir / "pass2_executor.py", p2_args)
+        if pass2_result and "findings" in pass2_result:
+            all_findings.extend(pass2_result["findings"])
+
+    # Legacy API path: external Anthropic API call (kept for headless/CI).
+    elif args.pass2_api:
+        p2_args = [str(args.path), "--type", artifact_type, "--api",
+                   "--target", f"claude-{args.target}"]
         if args.pass2_max_rules:
             p2_args += ["--max-rules", str(args.pass2_max_rules)]
         pass2_result = run_script(scripts_dir / "pass2_executor.py", p2_args)
         if pass2_result and "findings" in pass2_result:
             all_findings.extend(pass2_result["findings"])
+
+    # Default Pass-2 path: emit a payload for the host LLM to judge in-context.
+    elif args.pass2:
+        payload_path = _payload_path_for(args.path)
+        _cleanup_stale_payloads(payload_path.parent)
+        p2_args = [str(args.path), "--type", artifact_type, "--emit",
+                   "--emit-out", str(payload_path)]
+        if args.pass2_max_rules:
+            p2_args += ["--max-rules", str(args.pass2_max_rules)]
+        emit_result = run_script(scripts_dir / "pass2_executor.py", p2_args)
+        findings_path = payload_path.with_suffix(".findings.json")
+        pass2_result = {
+            "executor": "pass2",
+            "status": "pending_host",
+            "executed": False,
+            "reason": "payload emitted — awaiting host LLM judging via --pass2-findings",
+            "mode": "host-emit",
+            "findings": [],
+            "rules_evaluated": 0,
+            "host_handoff": {
+                "payload_path": str(payload_path),
+                "findings_path": str(findings_path),
+                "rules_count": emit_result.get("rules_count", "?"),
+                "next_step": (
+                    f"Host LLM: read {payload_path}, judge each rule against "
+                    f"`artifact_text`, write `violated` findings as JSON array to "
+                    f"{findings_path}, then re-run with --pass2-findings {findings_path}"
+                ),
+            },
+        }
 
     active_findings, exempted = apply_exceptions(all_findings, args.no_exceptions)
 
@@ -370,10 +477,11 @@ def main():
     rules_meta = read_rules_meta(skill_dir)
     opts = {"target": args.target, "mode": args.mode, "verbose": args.verbose,
             "no_exceptions": args.no_exceptions, "pass2": args.pass2,
-            "plain": args.plain}
+            "plain": args.plain,
+            "pass2_handoff": (pass2_result or {}).get("host_handoff")}
     pass2_executed = bool(pass2_result and pass2_result.get("executed"))
     report = emit_report(classification, pass1, score_active, score_raw,
-                         exempted, rules_meta, opts, pass2_executed)
+                         exempted, rules_meta, opts, pass2_executed, pass2_result)
     print(report)
     if pass2_result is not None:
         print()
@@ -382,12 +490,17 @@ def main():
             print(f"  Rules evaluated: {pass2_result.get('rules_evaluated', 0)}")
             print(f"  Findings: {len(pass2_result.get('findings', []))}")
             usage = pass2_result.get("usage", {})
-            if usage:
+            if usage and usage.get("input_tokens"):
                 print(f"  Tokens: in={usage.get('input_tokens', '?')} out={usage.get('output_tokens', '?')} "
                       f"cache_read={usage.get('cache_read_input_tokens', 0)}")
+        elif pass2_result.get("mode") == "host-emit":
+            handoff = pass2_result.get("host_handoff", {})
+            print(f"PASS 2 — payload emitted for host LLM (no API call made)")
+            print(f"  Payload: {handoff.get('payload_path', '?')}")
+            print(f"  Rules to judge: {handoff.get('rules_count', '?')}")
+            print(f"  Next: {handoff.get('next_step', '?')}")
         else:
             print(f"PASS 2 — not executed: {pass2_result.get('reason', 'unknown')}")
-            print(f"  (Set ANTHROPIC_API_KEY and `pip install anthropic` to enable.)")
 
     if args.json_out:
         opts_serializable = {k: str(v) if isinstance(v, Path) else v

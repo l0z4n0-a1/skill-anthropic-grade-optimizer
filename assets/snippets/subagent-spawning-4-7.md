@@ -4,10 +4,10 @@
 |---|---|
 | triggers_rule | AR-MODEL-015 |
 | applies_to | system_prompt, agent, claude_md |
-| model_specific | opus-4-7 |
+| model_specific | opus-4-8, opus-4-7 (NOT fable-5 — reversed there) |
 | verbatim | yes |
-| source_url | https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/claude-prompting-best-practices#controlling-subagent-spawning |
-| insertion_pattern | append to artifacts that orchestrate subagents on Opus 4.7 (do NOT insert into subagent files themselves) |
+| source_url | https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/prompting-claude-opus-4-8#controlling-subagent-spawning |
+| insertion_pattern | append to artifacts that orchestrate subagents on Opus 4.8/4.7 (do NOT insert into subagent files themselves) |
 | voice_drift | low |
 
 ## When to insert
@@ -25,9 +25,13 @@ Spawn multiple subagents in the same turn when fanning out across items or readi
 
 ## Operator notes
 
-- Doctrine context: *"Claude Opus 4.7 tends to spawn fewer subagents by default.
-  However, this behavior is steerable through prompting; give Claude Opus 4.7
-  explicit guidance around when subagents are desirable."*
+- Doctrine context (2026-07-11, prompting-claude-opus-4-8): *"Claude Opus 4.8
+  tends to spawn fewer subagents by default. However, this behavior is steerable
+  through prompting; give Claude Opus 4.8 explicit guidance around when
+  subagents are desirable."* Same guidance originally published for Opus 4.7.
+- Fable 5 guard: do NOT insert for target fable-5 — that model dispatches
+  subagents readily; guidance there should govern (when NOT to spawn), not
+  encourage. See modulation-matrix `fable-5.subagent_behavior`.
 - Type-aware guard: NEVER insert into a subagent file (`.claude/agents/<name>.md`).
   AR-CC-043 forbids subagents from spawning subagents; this guidance would be
   nonsensical there.

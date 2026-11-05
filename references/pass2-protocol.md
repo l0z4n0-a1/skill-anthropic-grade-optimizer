@@ -19,7 +19,7 @@ This document is the **explicit reasoning protocol** for Pass 2. Without it, "re
 For each rule with `detection_method: llm-judge` or `heuristic` in `applicable_rules`:
 
 1. Read the rule's full record from `references/rules-anthropic.yaml` (statement, verbatim_quote, source_url, detection_hint).
-2. If `model_specific` field exists, check if `target_model` matches. If not, skip the rule.
+2. If `model_specific` field exists, check if `target_model` matches. **Matching semantics:** the field may be a compound string ("opus-4-8, sonnet-5, opus-4-7; REVERSED on fable-5"). Match `target_model` only against the model tokens BEFORE any `;` — text after `;` is scope commentary, and `NOT <model>` / `REVERSED on <model>` mean the rule does NOT apply as written to that model (for REVERSED, the inverse guidance applies — read the rule's statement/notes). If no match, skip the rule.
 3. If the rule appears in `false_positive_rules` for this artifact type (rubric-by-type.yaml § false_positive_rules), skip with comment `suppressed-by-D9`.
 
 ### Step 2: Apply per-rule reasoning
@@ -68,12 +68,15 @@ Some heuristic rules need quantitative thresholds. Use these defaults (override 
 
 ### Step 4: Severity calibration via target model
 
-Some rules amplify by model. Apply:
+Some rules amplify by model. Apply (updated 2026-07-11 for the current family):
 
-- `target_model = opus-4-7`: AR-CLAR-009/010/012, AR-MODEL-002/003/004/005/006, AR-REASON-010 → all SEVERITY one notch UP (soft → hard)
+- `target_model in {opus-4-8, opus-4-7}`: AR-CLAR-010/012, AR-MODEL-002/003/004/005/006, AR-REASON-010 → all SEVERITY one notch UP (soft → hard). *Why: literal instruction following + strict effort make these misconfigurations bite harder.*
+- `target_model = sonnet-5`: AR-CLAR-010/012, AR-MODEL-002/006, AR-REASON-010, AR-CONTEXT-008 → SEVERITY UP. Do NOT notch up AR-MODEL-003/004's xhigh recommendation (Sonnet 5 keeps the `high` default). AR-MODEL-013 is INVERTED (more agentic by default; thinking-off is the exception) — read its notes before raising it.
+- `target_model = fable-5`: AR-MODEL-002 (prefill/sampling) → SEVERITY UP. DROP AR-MODEL-003/004 and AR-REASON-018 (effort inversion: start `high`), and treat AR-MODEL-005/015 as REVERSED (govern, don't encourage, subagent spawning). Any `thinking` configuration in the artifact is itself a finding (400 on disabled/budget_tokens).
+- `target_model = opus-4-7` additionally: AR-CLAR-009 no longer notches up — the rule is scoped to Opus 4.5/4.6 per the live page (see AR-CLAR-009 notes).
 - `target_model = haiku-4-5`: AR-EXAMPLE-004 (3-5 examples) → SEVERITY UP; few-shot is more critical for Haiku
 - `target_model = haiku-4-5`: AR-REASON-011 (adaptive thinking) → DROP — not supported on Haiku
-- `target_model = sonnet-4-6`: AR-CONTEXT-008 (context awareness) → SEVERITY UP; Sonnet 4.6 supports it
+- `target_model in {sonnet-5, sonnet-4-6}`: AR-CONTEXT-008 (context awareness) → SEVERITY UP; both support it
 
 ### Step 5: D9 conflict resolution
 
