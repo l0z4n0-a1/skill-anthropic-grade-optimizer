@@ -418,7 +418,8 @@ def usage(home: pathlib.Path, days: int, unreadable: list) -> dict:
         blocks = [b for b in as_list(content) if isinstance(b, dict)]
         if row.get("type") == "assistant":
             mid = msg.get("id")
-            if isinstance(mid, str) and isinstance(msg.get("usage"), dict):
+            # a "<synthetic>" message is written by Claude Code itself, not by a model: no request, no tokens
+            if isinstance(mid, str) and isinstance(msg.get("usage"), dict) and msg.get("model") != "<synthetic>":
                 model = clean_name(msg.get("model"))
                 if mid not in messages:
                     if isinstance(row.get("effort"), str):

@@ -48,7 +48,7 @@ Three parts, each doing what it is good at.
 
 ```
 scripts/measure.py     counts: pieces, load timing, context cost, 30-day usage
-kb/claims/*.jsonl      remembers: 822 statements from Anthropic's docs, each
+kb/claims/*.jsonl      remembers: 800+ statements from Anthropic's docs, each
                        with a verbatim quote, source and read date
 SKILL.md + references  judges: the model reads the setup with the measurement
                        and the relevant claims, and reports findings
@@ -118,7 +118,8 @@ python scripts/kb.py cite hooks-030              # full record with quote and so
 
 Sources are Anthropic's Claude Code documentation, the Claude platform
 documentation, the reference files of the `claude-api` skill bundled with Claude
-Code, and Anthropic engineering posts: 77 sources, last read 2026-11-14. The
+Code, and Anthropic engineering posts. `kb/sources.json` lists every page and
+`kb/snapshots.lock.json` records when each was last read. The
 documentation itself is not redistributed; the repository holds short quotes,
 links and content hashes.
 

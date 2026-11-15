@@ -188,7 +188,8 @@ finding.
 
 ### 6. Is each piece well made for what it does?
 
-Read individual pieces with `references/piece-review.md`, chosen by leverage:
+Read individual pieces with `references/piece-review.md`, chosen by how much
+rides on them:
 the instruction file every session loads, the skills and agents that carry the
 most work, and anything the earlier questions flagged. For text that may simply
 be dated, recommend `/doctor prompt-audit`, and spend your own reading on
