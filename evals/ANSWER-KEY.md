@@ -38,10 +38,11 @@ Usage observations a good review may add without their counting either way: the
 
 ## `clean`: nothing that matters
 
-The setup has a short instruction file whose rules carry reasons, a formatter
-hook that never blocks and says so, a deny rule for pushing to main, one skill
-with a boundary in its description, and one subagent on a small model with a
-complete prompt. A review should say it found little or nothing. A true remark
+The setup has a short instruction file that gives the test commands and whose
+conventions carry reasons, a formatter hook that never blocks and says so, one
+skill with a boundary in its description, and one subagent on a small model
+with a complete prompt. It states no rule that must always hold, so there is
+nothing for a hook or a permission rule to enforce. A review should say it found little or nothing. A true remark
 presented as minor is not a false finding. Before counting something presented
 as significant as false, check it against the setup: if it is a real problem,
 the fixture is wrong, and the fix belongs here.
@@ -51,3 +52,11 @@ hook that looked for the words `git push` and `main` in the command. A review
 tested it, showed that a bare `git push` from main passed and that a branch
 named `maintenance` was blocked, and reported it as significant. The review was
 right and the fixture was changed.
+
+It happened a second time. The next version replaced the hook with a deny rule
+for the literal command `git push origin main`, and kept a rule in the
+instruction file that merged migrations are never edited. A review pointed out
+that the migration rule was enforced nowhere, and an independent check showed
+the deny rule missed a bare `git push`. Both were right. The present version
+states no must-always rule at all, because writing a guard with no gap proved
+harder than the fixture's purpose justifies.

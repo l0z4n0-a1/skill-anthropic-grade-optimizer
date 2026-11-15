@@ -97,11 +97,13 @@ python scripts/measure.py --project . --out before.json
 python scripts/measure.py --project . --compare before.json
 ```
 
-It reads local files only and makes no network call. It copies values only from
-fixed lists of fields that are configuration (named frontmatter fields, named
-settings, named hook options) and records everything else by name or count.
-Hook commands are copied as written. From session history it keeps counts, token
-totals and the names of models, tools, skills and agents, never message text. Token figures for
+It reads local files only and makes no network call. It copies what a review
+needs: the values of a fixed list of frontmatter fields and settings, hook
+definitions, permission rules, and the names of servers, plugins, models, tools,
+skills and agents. It never copies `env` values, MCP server arguments or message
+text. What it copies, it copies as written, so a secret typed into a
+description, a hook command or a permission rule ends up in the output: treat
+the JSON like the files it was read from. Token figures for
 files are character counts divided by four and are labelled as estimates. What
 it cannot see (the built-in system prompt, MCP tool definitions, sessions from
 other machines) is listed in its output under `not_measured`.

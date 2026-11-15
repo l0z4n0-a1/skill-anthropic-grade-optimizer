@@ -47,7 +47,9 @@ claims, `kb/sources.json` and `kb/snapshots.lock.json` together.
 ## Changing the measurement
 
 `scripts/measure.py` must stay standard-library only, make no network call, and
-never write a value from `env` or text from a session into its output. Add a
+never write an `env` value, an MCP server argument or message text into its
+output. A new value may be copied only by adding its key to one of the
+allowlists at the top of the file. Add a
 test in `tests/test_instrument.py` for any new figure, built on the temporary
 setup the tests create, so the suite never reads a developer's own files.
 

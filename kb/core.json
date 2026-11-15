@@ -97,7 +97,7 @@
     ]
   },
   "subagent": {
-    "principle": "A subagent starts in a fresh context with only its own system prompt and the task message Claude writes, so the brief must carry everything it needs and the return should be a condensed summary. Delegation pays when a side task would flood the main conversation with output, not when phases share context, since each subagent spends tokens of its own and its report lands in the main context.",
+    "principle": "A subagent starts in a fresh context without the conversation: it has its own system prompt and the task message Claude writes, and a custom subagent also loads the project's instruction files. So the brief must carry everything specific to the task, and the return should be a condensed summary. Delegation pays when a side task would flood the main conversation with output, not when phases share context, since each subagent spends tokens of its own and its report lands in the main context.",
     "claims": [
       "subagents-011",
       "subagents-014",
@@ -131,7 +131,7 @@
     ]
   },
   "hooks": {
-    "principle": "Hooks give deterministic control, so actions always happen instead of relying on the model to choose them. Only exit code 2 blocks and not every event can block, and by default a hook that fails or times out lets the action proceed unless onFailure is block; static instructions that never change belong in CLAUDE.md instead.",
+    "principle": "Hooks give deterministic control, so actions always happen instead of relying on the model to choose them. A command hook blocks by exiting with code 2 or by printing a blocking decision; any other non-zero exit is an error that does not block, and not every event can block. By default a hook that fails or times out lets the action proceed unless onFailure is block. Static instructions that never change belong in CLAUDE.md instead.",
     "claims": [
       "hooks-030",
       "hooks-001",

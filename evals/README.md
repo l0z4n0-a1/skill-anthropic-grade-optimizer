@@ -45,6 +45,17 @@ Each row is a single run, scored by hand against the key.
 |---|---|---|---|---|---|
 | 2026-11-15 | 2.0.0 | Claude Opus 5.5 | 10 of 10 | 0 | 1, a real defect in the fixture (see the answer key); fixture since changed |
 | 2026-11-15 | 2.0.0 | Claude Haiku 5.5 | 7 of 10 (missed D4, D7, D8) | 0 | not run |
+| 2026-11-15 | 2.0.0 | Claude Opus 5.5 | not run | not run | 1, again a real defect in the fixture (second entry in the answer key); fixture changed again |
+
+The `clean` setup as it stands now has not been reviewed yet, so there is still
+no recorded run in which a setup with nothing wrong produced no significant
+finding. Both attempts at writing one contained a real problem, and the review
+found it each time.
+
+The model-fit job was run once, blind, on `planted` (Claude Opus 5.5, moving a
+setup from Opus 5.5 to Sonnet 5.5). It produced the three lists the guide asks
+for, cited a claim for each item, and declined to compute a saving from prices
+the knowledge base does not hold. It has no answer key, so it has no score.
 
 Both `planted` runs also reported observations outside the key that were true
 of the setup and labelled as judgment (the main session's context size; trying a

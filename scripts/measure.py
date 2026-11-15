@@ -21,12 +21,15 @@ of them; an agent with no definition here (built in, or defined in another
 project) is listed under `spawned_without_definition_here`. What the script
 does not read is listed in the output under `not_measured`.
 
-Privacy: reads local files only and makes no network call. It copies values only
-from fixed lists of fields that are configuration, not credentials: named
-frontmatter fields, named settings, named hook options. Everything else is
-recorded by name or by count. Hook commands are copied as written, so a secret
-typed into a hook command appears in the output. From session history it keeps
-counts, token totals, and the names of models, tools, skills and agents.
+Privacy: reads local files only and makes no network call. It copies what a
+review needs and nothing else: the values of a fixed list of frontmatter fields
+and settings, hook definitions (event, matcher, command, timeout and a fixed
+list of options), permission rules, and the names of servers, plugins, models,
+tools, skills and agents. It never copies `env` values, MCP server arguments,
+message text, or the contents of any frontmatter block outside the list. What it
+copies, it copies as written: a secret typed into a description, a hook command
+or a permission rule appears in the output, so treat the JSON like the files it
+was read from.
 
 Stdlib only. Python 3.9+.
 """
@@ -39,6 +42,7 @@ import json
 import os
 import pathlib
 import re
+import shlex
 import sys
 
 CHARS_PER_TOKEN = 4  # an estimating convention, not a fact about Claude Code; every figure from it is labelled an estimate
@@ -57,9 +61,12 @@ SAFE_FIELDS = {"name", "description", "when_to_use", "model", "effort", "tools",
 SAFE_SETTINGS = {"model", "outputStyle", "effortLevel", "autoCompactWindow", "cleanupPeriodDays",
                  "disableBundledSkills", "alwaysThinkingEnabled", "autoMemoryEnabled"}
 SAFE_HOOK_OPTIONS = {"onFailure", "async", "once", "continueOnBlock"}
+TEXT_FIELDS = {"description", "when_to_use", "argument-hint"}  # prose; every other safe field is a scalar or a list
+SKILL_STATES = {"on", "name-only", "user-invocable-only", "off"}
 SCRIPT_EXT = r"(?:py|sh|js|mjs|cjs|ts|ps1|cmd|bat|rb|pl)"
 MAX_VALUE = 2000  # longest frontmatter value kept
-NAME_RE = re.compile(r"^[\w .:@/+-]{1,80}$")
+NAME_RE = re.compile(r"[\w.:@/+-]{1,80}")
+STAMP_RE = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}")
 
 
 def est_tokens(chars: int) -> int:
@@ -75,13 +82,14 @@ def as_list(value) -> list:
 
 
 def num(value) -> int:
-    return value if isinstance(value, int) and not isinstance(value, bool) else 0
+    """A token count, or 0 for anything that is not a plausible one."""
+    return value if isinstance(value, int) and not isinstance(value, bool) and 0 <= value < 10**12 else 0
 
 
 def clean_name(value) -> str:
     """A model, tool, skill or agent name from session history, or a placeholder when it is not name-shaped."""
     text = value if isinstance(value, str) else ""
-    return text if NAME_RE.match(text) else "(unreadable name)"
+    return text if NAME_RE.fullmatch(text) else "(unreadable name)"
 
 
 def scalar(value):
@@ -118,6 +126,8 @@ def frontmatter(text: str):
     top-level entry, whatever it looks like; an indented line belongs to the entry
     above it. Values are kept only for entries whose key is in SAFE_FIELDS, so a
     block under any other key (quoted, commented, oddly spaced) is never copied.
+    Under a safe key, list items are kept; free continuation text is kept only for
+    the prose fields, so a mapping nested under `tools:` or `skills:` is dropped.
     """
     if not text.startswith("---"):
         return {}, [], text
@@ -128,23 +138,28 @@ def frontmatter(text: str):
     for line in text[3:end].splitlines():
         if not line.strip():
             continue
-        if not line[0].isspace():
+        item = line.strip()
+        is_list_item = item.startswith("- ") and key is not None
+        if not line[0].isspace() and not is_list_item:
             m = re.match(r"^([A-Za-z0-9_-]+):(?:\s+(.*))?$", line)
             if m and m.group(1) in SAFE_FIELDS:
                 key, val = m.group(1), (m.group(2) or "").strip()
+                if key not in TEXT_FIELDS:
+                    val = re.sub(r"\s+#.*$", "", val)  # a trailing YAML comment
+                    if val.startswith("{"):
+                        val = "(mapping)"
                 data[key] = "" if val in (">", "|", ">-", "|-") else val.strip("\"'")
             else:
                 key = None
-                label = re.match(r"^[\"']?([A-Za-z0-9_.-]+)", line)
-                if label and not line.startswith("#"):
+                label = re.match(r"^[\"']?([A-Za-z][A-Za-z0-9_.-]{0,40})[\"']?\s*:", line)
+                if label:
                     other.append(label.group(1))
-        elif key:
-            item = line.strip()
-            if item.startswith("- "):
-                item = item[2:].strip().strip("\"'")
-                data[key] = f"{data[key]}, {item}" if data[key] else item
-            else:
-                data[key] = (data[key] + " " + item).strip()
+        elif key and is_list_item:
+            entry = item[2:].strip().strip("\"'")
+            if key in TEXT_FIELDS or not re.search(r":\s|:$|^\{", entry):  # a list of mappings is not a list of names
+                data[key] = f"{data[key]}, {entry}" if data[key] else entry
+        elif key in TEXT_FIELDS:
+            data[key] = (data[key] + " " + item).strip()
     return {k: v[:MAX_VALUE] for k, v in data.items()}, other, text[end + 4:]
 
 
@@ -275,12 +290,21 @@ def markdown_pieces(scope_list: list, overrides: dict, unreadable: list) -> dict
 
 def missing_scripts(command: str, home: pathlib.Path, project: pathlib.Path) -> list:
     """Script files a hook command names that are not on disk. Paths it cannot resolve are left out, not guessed."""
-    text = command.replace('"', "").replace("'", "")
-    for var, target in (("CLAUDE_PROJECT_DIR", project), ("HOME", home.parent), ("USERPROFILE", home.parent)):
-        text = text.replace("${" + var + "}", str(target)).replace("$" + var, str(target)).replace("%" + var + "%", str(target))
-    text = re.sub(r"(?<![\w/\\])~(?=[/\\])", lambda _: str(home.parent), text)
+    try:
+        tokens = shlex.split(command.replace("\\", "/"))
+    except ValueError:
+        return []  # unbalanced quotes: unknown, not missing
     missing = []
-    for token in re.findall(r"[^\s;|&()]+\." + SCRIPT_EXT + r"(?![\w.])", text):
+    for token in tokens:
+        if not re.search(r"\." + SCRIPT_EXT + r"$", token):
+            continue
+        if token.startswith("~/.claude/"):
+            token = home.as_posix() + token[len("~/.claude"):]  # the audited --home, whatever it is named
+        elif token.startswith("~/"):
+            token = home.parent.as_posix() + token[1:]
+        for var, target in (("CLAUDE_PROJECT_DIR", project), ("HOME", home.parent), ("USERPROFILE", home.parent)):
+            for form in ("${" + var + "}", "$" + var, "%" + var + "%"):
+                token = token.replace(form, target.as_posix())
         if "$" in token or "%" in token:
             continue  # an unresolved variable: unknown, not missing
         path = pathlib.Path(token)
@@ -309,8 +333,11 @@ def settings_view(home: pathlib.Path, project: pathlib.Path, settings: list, unr
             "env_names": sorted(as_dict(data.get("env"))),
             "permissions": {k: (len(v) if isinstance(v, list) else scalar(v) if k == "defaultMode" else f"({type(v).__name__})")
                             for k, v in perms.items()},
+            "permission_rules": {k: [r[:200] for r in v if isinstance(r, str)][:200]
+                                 for k, v in perms.items() if k in ("allow", "ask", "deny") and isinstance(v, list)},
             "enabledPlugins": sorted(k for k, v in as_dict(data.get("enabledPlugins")).items() if v),
-            "skillOverrides": {k: scalar(v) for k, v in as_dict(data.get("skillOverrides")).items()}})
+            "skillOverrides": {clean_name(k): (v if v in SKILL_STATES else "(other)")
+                               for k, v in as_dict(data.get("skillOverrides")).items()}})
         for event, groups in as_dict(data.get("hooks")).items():
             for group in as_list(groups):
                 group = as_dict(group)
@@ -399,7 +426,7 @@ def usage(home: pathlib.Path, days: int, unreadable: list) -> dict:
 
     def take(row: dict, scope: str, fallback_session: str, agent: str) -> None:
         stamp = row.get("timestamp")
-        if not isinstance(stamp, str):
+        if not isinstance(stamp, str) or not STAMP_RE.match(stamp):
             skipped["rows without a readable timestamp"] += 1
             return
         if stamp[:19] < cutoff_iso:
@@ -514,21 +541,24 @@ def usage(home: pathlib.Path, days: int, unreadable: list) -> dict:
     lifetimes = collections.Counter()
     for sequence in order.values():
         prev = None
-        for stamp, mid in sequence:
+        for stamp, mid in sorted(sequence, key=lambda pair: pair[0]):
             _, model, use, _ = messages[mid]
             written, prompt = num(use.get("cache_creation_input_tokens")), prompt_of(use)
             split = as_dict(use.get("cache_creation"))
             long_lived = num(split.get("ephemeral_1h_input_tokens")) > 0
-            lifetimes["long" if long_lived else "short"] += written
+            if written:
+                lifetimes["long" if long_lived else "short"] += written
             if prev and prompt and written > prompt / 2 and prev[2] > prompt / 2:
                 now, then = seconds(stamp), seconds(prev[0])
                 gap = now - then if now is not None and then is not None else 0
-                if gap > (CACHE_LONG if long_lived else CACHE_SHORT):
+                if prompt < prev[2] / 2:
+                    cause = "after the context was compacted or cleared"
+                elif gap > (CACHE_LONG if long_lived else CACHE_SHORT):
                     cause = "after a pause longer than the cache lifetime"
                 elif model != prev[1]:
                     cause = "after a model switch"
                 else:
-                    cause = "other (compaction, or a change to tools or settings; not told apart)"
+                    cause = "other (a change to tools or settings, or a cause the history does not show)"
                 rebuilds[cause]["count"] += 1
                 rebuilds[cause]["tokens_rewritten"] += written
             prev = (stamp, model, prompt)
@@ -554,10 +584,11 @@ def usage(home: pathlib.Path, days: int, unreadable: list) -> dict:
         "tool_calls": dict(tools.most_common()), "skill_invocations": dict(skills.most_common()),
         "typed_commands": dict(slash.most_common()), "agent_spawns": dict(agents.most_common()),
         "agent_runs": agent_runs,
-        "cache_rebuilds": {"definition": "a main-session request that rewrote more than half of its prompt to the cache "
-                                         "when the previous request already held more than half of it",
-                           "by_cause": {k: dict(v) for k, v in sorted(rebuilds.items(), key=lambda kv: -kv[1]["tokens_rewritten"])},
-                           "cache_write_tokens_by_lifetime": dict(lifetimes)},
+        "cache_rebuilds": {"definition": "a main-session request that wrote more than half of its prompt to the cache "
+                                         "when the request before it in the same session was at least half that size; "
+                                         "one cause is given per rebuild, checked in the order compaction, pause, model switch",
+                           "by_cause": {k: dict(v) for k, v in sorted(rebuilds.items(), key=lambda kv: -kv[1]["tokens_rewritten"])}},
+        "main_cache_write_tokens_by_lifetime": dict(lifetimes),
         "tool_result_chars": dict(result_chars.most_common(12)), "requests_by_model_and_effort": dict(effort.most_common())}
 
 

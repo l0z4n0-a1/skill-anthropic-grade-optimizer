@@ -34,7 +34,7 @@ def session(path: pathlib.Path, model: str, skills: dict, agents: dict, requests
         if calls:
             name, args = calls.pop()
             n += 1
-            content.append({"type": "tool_use", "id": f"t{n}", "name": name, "input": args})
+            content.append({"type": "tool_use", "id": f"{path.stem}-t{n}", "name": name, "input": args})
         rows.append({"type": "assistant", "timestamp": now, "effort": "medium", "message": {
             "id": f"{path.stem}-m{i}", "model": model, "content": content,
             "usage": {"input_tokens": 20, "cache_creation_input_tokens": 2000,
@@ -184,11 +184,14 @@ def clean(base: pathlib.Path) -> None:
 Python 3.12 service that issues invoices. Tests run with `make test`; the suite
 needs the local Postgres from `docker compose up db`.
 
+Run one test file with `make test ARGS=tests/test_invoice.py`. A change is done
+when the tests that cover it pass; say which ones you ran.
+
 Money is stored as integer cents everywhere. The `Decimal` type appears only at
 the API boundary, because two rounding bugs came from mixing the two.
 
-Migrations are written by hand under `migrations/` and never edited after merge:
-production has already applied them, so a changed file would diverge silently.
+Tests for a module live beside it as `test_<module>.py`, so a reader finds them
+without searching.
 """)
     write(home / "hooks" / "format_changed.py", """#!/usr/bin/env python3
 \"\"\"Formats the file an edit just touched.
@@ -203,15 +206,14 @@ import sys
 
 try:
     path = json.load(sys.stdin).get("tool_input", {}).get("file_path", "")
-except ValueError:
-    sys.exit(0)
-if path.endswith(".py"):
-    subprocess.run(["ruff", "format", "--quiet", path], check=False)
+    if path.endswith(".py"):
+        subprocess.run(["ruff", "format", "--quiet", path], check=False)
+except (ValueError, OSError):
+    pass
 sys.exit(0)
 """)
     write(home / "settings.json", json.dumps({
         "model": "opus",
-        "permissions": {"deny": ["Bash(git push origin main)", "Bash(git push origin main *)"]},
         "hooks": {"PostToolUse": [{"matcher": "Edit|Write", "hooks": [
             {"type": "command", "command": "python ~/.claude/hooks/format_changed.py", "timeout": 30}]}]},
     }, indent=2))

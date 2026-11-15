@@ -61,6 +61,21 @@ Where the target is cheaper or stronger than what a role uses now, or where its
 documentation recommends against a kind of work, say so, as something to try
 and measure.
 
+**The exact wording.** Where a claim says the documentation recommends a
+sentence or paragraph, the claim's quote holds only its opening, since quotes
+are short. Take the full text from the source page that `kb.py cite` links,
+and give the person that text with the link. Do not reconstruct it from the
+opening.
+
+**Money.** The knowledge base does not track prices, which change. When the
+person asks what a move will save, point them to `/usage` for what they spend
+now and to the current pricing page for rates, and compare cost per finished
+task, not per token. Do not compute a saving from remembered prices.
+
+**What is not about the model.** Reading a setup closely turns up problems that
+would exist on any model. Report the ones that matter, briefly and in their own
+section, so the person does not take them for part of the migration.
+
 ## What to keep
 
 Nearly everything. Context about the project, the audience, the quality bar and

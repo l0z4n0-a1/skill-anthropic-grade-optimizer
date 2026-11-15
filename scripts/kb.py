@@ -81,7 +81,7 @@ def main() -> int:
     core = sub.add_parser("core")
     core.add_argument("question", nargs="?", default="")
     cite = sub.add_parser("cite")
-    cite.add_argument("ids")
+    cite.add_argument("ids", nargs="+", help="claim ids, separated by commas or spaces")
     args = ap.parse_args()
     sys.stdout.reconfigure(encoding="utf-8")
     claims = load()
@@ -111,7 +111,7 @@ def main() -> int:
         picked = [c for c in claims if args.id in c["applies_to"]]
         quotes = False
     elif args.cmd == "cite":
-        wanted = [i for i in args.ids.split(",") if i]
+        wanted = [i for part in args.ids for i in part.split(",") if i]
         by_id = {c["id"]: c for c in claims}
         missing = [i for i in wanted if i not in by_id]
         if missing:
@@ -126,7 +126,8 @@ def main() -> int:
                   and (not needle or needle in (c["claim"] + c["why"] + c["check"]).lower())]
         quotes = args.quotes
     if not picked:
-        print("no claims match", file=sys.stderr)
+        known = sorted({c["topic"] for c in claims})
+        print("no claims match. Topics: " + ", ".join(known) + ". Model ids: `kb.py models`.", file=sys.stderr)
         return 1
     print("\n".join(line(c, quotes, getattr(args, "brief", False)) for c in picked))
     print(f"\n{len(picked)} claims")

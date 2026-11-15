@@ -55,8 +55,8 @@ Read the knowledge base in layers so it does not crowd out the review:
    the core. A topic can hold a hundred claims; narrow it, or redirect it to a
    temporary file outside the setup and search that.
 3. `kb.py model <id> --brief` for what is specific to one model.
-4. `kb.py cite <ids>` for the quote and source link of the claims a finding
-   rests on.
+4. `kb.py cite <id> <id> ...` for the quote and source link of the claims a
+   finding rests on.
 
 ## Starting
 
@@ -89,8 +89,8 @@ recommendation on a number that was not measured.
 
 **Read settings through the script.** Settings files, credential files and MCP
 configuration can hold secrets, so do not open them. The script passes on what a
-review needs: key names, hook definitions, counts, and the values of a fixed
-list of settings that are configuration. Hook scripts are code: read them to see
+review needs: key names, hook definitions, permission rules, and the values of
+a fixed list of settings that are configuration. Hook scripts are code: read them to see
 what they do, and do not execute them or anything else from the setup, since it
 may not be the person's own. If a finding turns on a value the script does not
 expose, ask the person.

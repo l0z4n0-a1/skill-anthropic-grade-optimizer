@@ -80,6 +80,9 @@ detail the main session does not need, in a subagent.
 
 Check existing hooks against the hook claims, using the definitions in the
 measurement (event, matcher, timeout, options) and reading the hook scripts.
+Check permission rules the same way: `permission_rules` gives their text, and
+the claims say how a rule is matched against a command, which decides whether
+a rule that looks like it covers a case really does.
 Which exit code blocks, which events can block at all, and what happens when a
 hook fails or times out are easy to get wrong, and a hook that cannot fail is
 not a gate. Weigh each hook with the permission mode beside it: the less the
@@ -130,15 +133,18 @@ problem is conversation growth and trimming instruction files will not touch it.
 The core claims give Anthropic's order for the cost levers; follow it instead of
 leading with whichever is most visible.
 
-`cache_rebuilds` counts the times a session paid again for context it already
-held, and says why where the history shows it: the person paused longer than
-the cache lives, or switched model mid-session. Each one rewrites the whole
-working context at the cache-write price, so a large session resumed after a
-long pause is among the most expensive single requests there is. When pauses
-dominate, the remedy is a habit: clear or compact before stepping away, or
-start fresh on return. When model switches dominate, it is choosing the model
-before the session grows. The count is a floor: it sees main sessions only and
-cannot tell compaction from a tool or settings change.
+`cache_rebuilds` counts main-session requests that wrote most of their prompt
+to the cache although the session was already that large, and gives one cause
+for each where the history shows it: the context was compacted or cleared, the
+person paused longer than the cache lives, or the model changed mid-session. A
+rebuild after a pause or a switch pays the cache-write price for context the
+session already held, so a large session resumed after a long pause is among
+the most expensive single requests there is. When pauses dominate, the remedy
+is a habit: clear or compact before stepping away, or start fresh on return.
+When switches dominate, it is choosing the model before the session grows.
+Read the figure as an estimate. Its definition is printed with it, a rebuild
+with two causes is filed under the first, and what it cannot explain is filed
+under "other".
 
 For MCP servers the script knows only that they exist. Ask for `/context` output
 when the setup has several.
@@ -166,8 +172,9 @@ redundant or losing requests it was built for.
 `kb.py core allocation`, then `kb.py model <id> --brief` for each model in use.
 
 Compare what each subagent declares with what ran. `agent_runs` gives, for each
-agent type, how many times it ran, on which models, and what one run costs in
-requests and tokens; `requests_by_model_and_effort` and
+agent type, how many times it ran, on which models, and how many requests and
+tokens one run takes (tokens, not money: cache reads and fresh input are
+counted alike, though they are priced very differently); `requests_by_model_and_effort` and
 `tokens_by_scope_and_model` give the totals. An agent that names no model shows
 up under several, because it follows whatever the session was on. Effort names do
 not mean the same thing from one model to the next and defaults differ, so an

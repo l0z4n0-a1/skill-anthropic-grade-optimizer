@@ -312,6 +312,86 @@ class HardeningTest(unittest.TestCase):
             self.assertNotIn("README.md", json.dumps(record["bundled"]))
 
 
+class ThirdReviewTest(unittest.TestCase):
+    """Edge cases a third independent review found."""
+
+    def test_only_names_survive_under_a_list_field(self):
+        cases = {
+            "tools:\n  env:\n    API_KEY: SECRET123": "",
+            "tools: {api_key: SECRET123}": "(mapping)",
+            "skills:\n\tvault:\n\t\tkey: SECRET123": "",
+            "tools:\n  - name: x\n    token: SECRET123": "",
+        }
+        for block, expected in cases.items():
+            meta, other, _ = measure.frontmatter(f"---\nname: n\n{block}\n---\nbody")
+            self.assertNotIn("SECRET123", json.dumps([meta, other]), block)
+            self.assertEqual(meta.get("tools", meta.get("skills")), expected, block)
+
+    def test_yaml_lists_comments_and_stray_lines(self):
+        meta, other, _ = measure.frontmatter('---\ntools:\n- Read\n- Grep\nmodel: "sonnet"  # fast\nsk-ant-BARELINE\n---\n')
+        self.assertEqual((meta["tools"], meta["model"], other), ("Read, Grep", "sonnet", []))
+        meta, _, _ = measure.frontmatter("---\ndescription: Does x.\n  Use when y: always.\n---\n")
+        self.assertEqual(meta["description"], "Does x. Use when y: always.")
+
+    def test_hook_paths_with_spaces_and_a_home_not_named_dot_claude(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home, project = pathlib.Path(tmp) / "cfg dir", pathlib.Path(tmp) / "sp ace" / "proj"
+            write(home / "hooks" / "x.py", "")
+            write(project / "x.sh", "")
+            self.assertEqual(measure.missing_scripts('bash "$CLAUDE_PROJECT_DIR"/x.sh', home, project), [])
+            self.assertEqual(measure.missing_scripts("python ~/.claude/hooks/x.py", home, project), [])
+            self.assertEqual(len(measure.missing_scripts("python ~/.claude/hooks/gone.py", home, project)), 1)
+            self.assertEqual(measure.missing_scripts('echo "unbalanced', home, project), [])
+
+    def test_settings_edges(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home, project = pathlib.Path(tmp) / ".claude", pathlib.Path(tmp) / "proj"
+            write(project / "x", "")
+            write(home / "settings.json", json.dumps({
+                "skillOverrides": {"a": "off", "b": "SECRET9"},
+                "permissions": {"deny": ["Bash(git push origin main)", 7], "allow": ["Read"]}}))
+            files = measure.build(home, project, 0)["settings"]["files"][0]
+            self.assertEqual(files["skillOverrides"], {"a": "off", "b": "(other)"})
+            self.assertEqual(files["permission_rules"], {"deny": ["Bash(git push origin main)"], "allow": ["Read"]})
+
+    def test_history_edges(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home, project = pathlib.Path(tmp) / ".claude", pathlib.Path(tmp) / "proj"
+            write(project / "x", "")
+            base = dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=2)
+
+            def row(i, minutes, read, written, stamp=None, out=10):
+                when = stamp or (base + dt.timedelta(minutes=minutes)).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+                return {"type": "assistant", "uuid": f"u{i}", "sessionId": "s", "timestamp": when, "message": {
+                    "id": f"m{i}", "model": "claude-opus-5-5", "content": [], "usage": {
+                        "input_tokens": 0, "cache_read_input_tokens": read, "cache_creation_input_tokens": written,
+                        "output_tokens": out, "cache_creation": {"ephemeral_1h_input_tokens": written}}}}
+            rows = [row(2, 2, 10000, 20000),             # written out of order: this is the compacted request
+                    row(0, 0, 0, 150000), row(1, 1, 150000, 500),
+                    row(3, 3, 0, 0, stamp="garbage"), row(4, 4, 0, 0, out=10 ** 400)]
+            write(home / "projects" / "p" / "s.jsonl", "\n".join(json.dumps(r) for r in rows) + "\n")
+            sub = home / "projects" / "p" / "s" / "subagents"
+            write(sub / "agent-1.jsonl", json.dumps(row(9, 5, 0, 100, out=40)) + "\n")
+            write(sub / "agent-1.meta.json", json.dumps({"agentType": "scout"}))
+            doc = measure.build(home, project, 30)
+            use = doc["usage"]
+            self.assertEqual(use["cache_rebuilds"]["by_cause"],
+                             {"after the context was compacted or cleared": {"count": 1, "tokens_rewritten": 20000}})
+            self.assertEqual(use["main_cache_write_tokens_by_lifetime"], {"long": 170500})
+            self.assertEqual(use["tokens_by_scope_and_model"]["main | claude-opus-5-5"]["output"], 30)  # the absurd count is 0
+            self.assertEqual(use["agent_runs"]["scout"]["runs"], 1)
+            self.assertTrue(any("readable timestamp" in u for u in doc["unreadable"]))
+
+    def test_cite_takes_ids_separated_by_spaces_or_commas(self):
+        script = [sys.executable, str(ROOT / "scripts" / "kb.py"), "cite"]
+        for ids in (["hooks-001", "hooks-005"], ["hooks-001,hooks-005"]):
+            out = subprocess.run(script + ids, capture_output=True, text=True, encoding="utf-8")
+            self.assertEqual(out.returncode, 0, out.stderr)
+            self.assertIn("2 claims", out.stdout)
+        miss = subprocess.run([sys.executable, str(ROOT / "scripts" / "kb.py"), "show", "nonsense"], capture_output=True, text=True)
+        self.assertIn("Topics:", miss.stderr)
+
+
 class GateTest(unittest.TestCase):
     """The gate is only a gate if it can fail: each bad claim below must be rejected."""
 

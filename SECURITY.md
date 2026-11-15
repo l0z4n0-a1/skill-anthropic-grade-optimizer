@@ -30,12 +30,14 @@ public disclosure.
 ## What the scripts touch
 
 - `measure.py` reads the Claude Code directory and one project directory on the
-  local machine and makes no network call. From settings files it records key
-  names, hook definitions and counts, and never the values of `env` entries or
-  the arguments of MCP servers. From session history it records counts and token
-  totals, and never message text. Hook commands are recorded as written; if a
-  hook command embeds a secret, that secret appears in the output file, so treat
-  the JSON as you would the settings file itself.
+  local machine and makes no network call. It copies the values of a fixed list
+  of frontmatter fields and settings, hook definitions, permission rules, and
+  the names of servers, plugins, models, tools, skills and agents. It never
+  copies the values of `env` entries, the arguments of MCP servers, message
+  text, or a frontmatter block outside the list. What it copies, it copies as
+  written: if a description, a hook command or a permission rule embeds a
+  secret, that secret appears in the output file, so treat the JSON as you would
+  the files it was read from.
 - `kb_fetch.py` is the only script that uses the network. It requests the URLs in
   `kb/sources.json` with a generic User-Agent and sends nothing about the machine
   or the user.
