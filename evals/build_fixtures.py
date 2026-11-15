@@ -190,30 +190,30 @@ the API boundary, because two rounding bugs came from mixing the two.
 Migrations are written by hand under `migrations/` and never edited after merge:
 production has already applied them, so a changed file would diverge silently.
 """)
-    write(home / "hooks" / "guard_main.py", """#!/usr/bin/env python3
-\"\"\"Blocks `git push` to main.
+    write(home / "hooks" / "format_changed.py", """#!/usr/bin/env python3
+\"\"\"Formats the file an edit just touched.
 
-In:   the PreToolUse payload on stdin.
-Out:  exit 0 to allow; exit 2 with the reason on stderr to block.
-Fail: unreadable input blocks too, since a guard that cannot read is not guarding.
+In:   the PostToolUse payload on stdin.
+Out:  always exit 0; formatting is a convenience and must never stop work.
+Fail: an unreadable payload or a missing formatter is ignored.
 \"\"\"
 import json
+import subprocess
 import sys
 
 try:
-    command = json.load(sys.stdin).get("tool_input", {}).get("command", "")
+    path = json.load(sys.stdin).get("tool_input", {}).get("file_path", "")
 except ValueError:
-    print("guard_main: could not read the tool call; blocking.", file=sys.stderr)
-    sys.exit(2)
-if "git push" in command and "main" in command:
-    print("Pushing to main is blocked. Open a pull request instead.", file=sys.stderr)
-    sys.exit(2)
+    sys.exit(0)
+if path.endswith(".py"):
+    subprocess.run(["ruff", "format", "--quiet", path], check=False)
 sys.exit(0)
 """)
     write(home / "settings.json", json.dumps({
         "model": "opus",
-        "hooks": {"PreToolUse": [{"matcher": "Bash", "hooks": [
-            {"type": "command", "command": "python ~/.claude/hooks/guard_main.py", "timeout": 5, "onFailure": "block"}]}]},
+        "permissions": {"deny": ["Bash(git push origin main)", "Bash(git push origin main *)"]},
+        "hooks": {"PostToolUse": [{"matcher": "Edit|Write", "hooks": [
+            {"type": "command", "command": "python ~/.claude/hooks/format_changed.py", "timeout": 30}]}]},
     }, indent=2))
     write(home / "skills" / "deploy-staging" / "SKILL.md", """---
 name: deploy-staging

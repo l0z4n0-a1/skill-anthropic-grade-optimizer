@@ -268,6 +268,38 @@ class HardeningTest(unittest.TestCase):
             self.assertEqual(use["tokens_total"]["input"], 5)
             self.assertIn("main | (unreadable name)", use["tokens_by_scope_and_model"])
 
+    def test_agent_runs_and_cache_rebuilds(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home, project = pathlib.Path(tmp) / ".claude", pathlib.Path(tmp) / "proj"
+            write(project / "x", "")
+            base = dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=5)
+
+            def row(i, minutes, model, read, written, uid):
+                return {"type": "assistant", "uuid": uid, "sessionId": "s", "effort": "medium",
+                        "timestamp": (base + dt.timedelta(minutes=minutes)).strftime("%Y-%m-%dT%H:%M:%S.000Z"),
+                        "message": {"id": f"m{i}", "model": model, "content": [], "usage": {
+                            "input_tokens": 0, "cache_read_input_tokens": read, "cache_creation_input_tokens": written,
+                            "output_tokens": 10, "cache_creation": {"ephemeral_1h_input_tokens": written}}}}
+            rows = [row(0, 0, "claude-opus-5-5", 0, 100000, "a"),        # first request: a write, not a rebuild
+                    row(1, 1, "claude-opus-5-5", 100000, 1000, "b"),     # normal
+                    row(2, 90, "claude-opus-5-5", 0, 101000, "c"),       # 89 minutes later: the one-hour cache is gone
+                    row(3, 91, "claude-sonnet-5-5", 0, 102000, "d"),     # model switch
+                    row(4, 92, "claude-sonnet-5-5", 102000, 500, "e")]   # normal
+            write(home / "projects" / "p" / "s.jsonl", "\n".join(json.dumps(r) for r in rows) + "\n")
+            sub = home / "projects" / "p" / "s" / "subagents"
+            for n in (1, 2):
+                r = row(10 + n, 2, "claude-haiku-5-5", 0, 2000, f"s{n}")
+                r["message"]["usage"]["output_tokens"] = 300
+                write(sub / f"agent-{n}.jsonl", json.dumps(r) + "\n")
+                write(sub / f"agent-{n}.json", json.dumps({"agentType": "scout", "model": "haiku"}))
+            use = measure.build(home, project, 30)["usage"]
+            causes = use["cache_rebuilds"]["by_cause"]
+            self.assertEqual(causes["after a pause longer than the cache lifetime"], {"count": 1, "tokens_rewritten": 101000})
+            self.assertEqual(causes["after a model switch"], {"count": 1, "tokens_rewritten": 102000})
+            self.assertEqual(len(causes), 2)
+            scout = use["agent_runs"]["scout"]
+            self.assertEqual((scout["runs"], scout["output_tokens_per_run"], scout["models"]), (2, 300, {"claude-haiku-5-5": 2}))
+
     def test_one_piece_can_be_measured_without_a_setup(self):
         with tempfile.TemporaryDirectory() as tmp:
             skill = write(pathlib.Path(tmp) / "s" / "SKILL.md", "---\nname: s\ndescription: Does one thing well\n---\nbody\n")

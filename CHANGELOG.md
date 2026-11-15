@@ -12,15 +12,17 @@ together, and whether each is good at its job.
 ### Added
 - `scripts/measure.py`: lists every piece of a setup, when it loads, its estimated
   context cost, and 30 days of usage by model, tool, skill and agent from local
-  session history. `--compare` shows what changed between two runs.
+  session history, including what one run of each subagent type costs and how
+  often a session rebuilt its cache and why. `--compare` shows what changed
+  between two runs; `--piece` measures one skill or subagent on its own.
 - `kb/`: 822 claims from 77 Anthropic sources, each with a verbatim quote, source
   and read date, covering Claude Opus 5.5, Sonnet 5.5, Haiku 5.5 and Fable 5.2.
 - `scripts/kb_gate.py`: rejects any claim whose quote is not in its source
   snapshot; after a fetch, this is also how stale claims are found.
 - `scripts/kb_fetch.py` and `scripts/kb.py`: fetch sources by content hash, and
   select claims by topic and model for a review.
-- `kb/core.json`: for each of ten review questions, the dozen claims to read
-  first and the principle they support. `kb/harness.json`: the numbers the
+- `kb/core.json`: for each review question, the dozen claims to read first and
+  the principle they support. `kb/harness.json`: the numbers the
   measurement depends on, each tied to the claim that documents it.
 - `evals/`: a setup with ten planted defects and a clean one, with an answer
   key, for checking how many defects a review finds and how many it invents.

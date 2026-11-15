@@ -215,6 +215,30 @@
     "sha256": "1ea4367112bf1ab73bd954ed6ee6bebb411d4a4dde3081f89bed44ba55a21a04",
     "source": "https://code.claude.com/docs/en/plugins/components.md"
   },
+  "cc-plugins-create": {
+    "bytes": 26139,
+    "fetched": "2026-11-15",
+    "sha256": "0d04a27c58fef32e9658206817732423f61ff96e31cfbd0bdf9cde209a4089f8",
+    "source": "https://code.claude.com/docs/en/plugins/create.md"
+  },
+  "cc-plugins-create-marketplace": {
+    "bytes": 15994,
+    "fetched": "2026-11-15",
+    "sha256": "09ca4f45324f12bfae726823b14c7b3c5bdd8f31261afe74c93691d2d21b4e1c",
+    "source": "https://code.claude.com/docs/en/plugins/create-marketplace.md"
+  },
+  "cc-plugins-manifest-reference": {
+    "bytes": 42840,
+    "fetched": "2026-11-15",
+    "sha256": "f5d88a52b3bf6ef52b249dc230df025d4915701459a6947375e87740ffc75ffc",
+    "source": "https://code.claude.com/docs/en/plugins/manifest-reference.md"
+  },
+  "cc-plugins-marketplace-reference": {
+    "bytes": 49025,
+    "fetched": "2026-11-15",
+    "sha256": "6220dc0a4ae8518fc1c0dc8fb6d1af040cfeadda055893249eabd9dd32a76544",
+    "source": "https://code.claude.com/docs/en/plugins/marketplace-reference.md"
+  },
   "cc-plugins-measure": {
     "bytes": 13473,
     "fetched": "2026-11-14",
@@ -226,6 +250,12 @@
     "fetched": "2026-11-14",
     "sha256": "e5b255a52965b71be9d9583bb9b6707f65ce1f214f6afa4f614e1a492787e599",
     "source": "https://code.claude.com/docs/en/plugins/overview.md"
+  },
+  "cc-plugins-publish": {
+    "bytes": 17210,
+    "fetched": "2026-11-15",
+    "sha256": "f7b6defb5c8fc1881be2df2f9a4b7a067e52727fa92817feca74c7cefbfcac8f",
+    "source": "https://code.claude.com/docs/en/plugins/publish.md"
   },
   "cc-plugins-relevance": {
     "bytes": 13334,

@@ -43,3 +43,11 @@ Each row is a single run, scored by hand against the key.
 
 | Date | Skill version | Model | Found on `planted` | False on `planted` | Significant on `clean` |
 |---|---|---|---|---|---|
+| 2026-11-15 | 2.0.0 | Claude Opus 5.5 | 10 of 10 | 0 | 1, a real defect in the fixture (see the answer key); fixture since changed |
+| 2026-11-15 | 2.0.0 | Claude Haiku 5.5 | 7 of 10 (missed D4, D7, D8) | 0 | not run |
+
+Both `planted` runs also reported observations outside the key that were true
+of the setup and labelled as judgment (the main session's context size; trying a
+smaller default model). Those are not counted as false. The three defects the
+smaller model missed are all found by reading a piece's body closely, which is
+the last of the review's questions and the first to be cut short.

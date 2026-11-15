@@ -38,10 +38,16 @@ Usage observations a good review may add without their counting either way: the
 
 ## `clean`: nothing that matters
 
-The setup has a short instruction file whose rules carry reasons, one hook that
-blocks with exit 2 and fails closed, one skill with a boundary in its
-description, and one subagent on a small model with a complete prompt. A review
-should say it found little or nothing. Reasonable minor remarks (for example
-that the guard matches `main` anywhere in the command) are not false findings if
-they are true and presented as minor. Anything presented as a significant
-problem is a false finding.
+The setup has a short instruction file whose rules carry reasons, a formatter
+hook that never blocks and says so, a deny rule for pushing to main, one skill
+with a boundary in its description, and one subagent on a small model with a
+complete prompt. A review should say it found little or nothing. A true remark
+presented as minor is not a false finding. Before counting something presented
+as significant as false, check it against the setup: if it is a real problem,
+the fixture is wrong, and the fix belongs here.
+
+That happened once. The first version of `clean` enforced the push rule with a
+hook that looked for the words `git push` and `main` in the command. A review
+tested it, showed that a bare `git push` from main passed and that a branch
+named `maintenance` was blocked, and reported it as significant. The review was
+right and the fixture was changed.

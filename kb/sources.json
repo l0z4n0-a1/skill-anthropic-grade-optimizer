@@ -460,5 +460,35 @@
     "url": "https://www.anthropic.com/engineering/claude-code-best-practices",
     "tier": 2,
     "topic": "harness"
+  },
+  {
+    "id": "cc-plugins-create",
+    "url": "https://code.claude.com/docs/en/plugins/create.md",
+    "tier": 1,
+    "topic": "plugins"
+  },
+  {
+    "id": "cc-plugins-manifest-reference",
+    "url": "https://code.claude.com/docs/en/plugins/manifest-reference.md",
+    "tier": 1,
+    "topic": "plugins"
+  },
+  {
+    "id": "cc-plugins-create-marketplace",
+    "url": "https://code.claude.com/docs/en/plugins/create-marketplace.md",
+    "tier": 1,
+    "topic": "plugins"
+  },
+  {
+    "id": "cc-plugins-marketplace-reference",
+    "url": "https://code.claude.com/docs/en/plugins/marketplace-reference.md",
+    "tier": 1,
+    "topic": "plugins"
+  },
+  {
+    "id": "cc-plugins-publish",
+    "url": "https://code.claude.com/docs/en/plugins/publish.md",
+    "tier": 1,
+    "topic": "plugins"
   }
 ]

@@ -28,8 +28,11 @@ together and whether each is good at what it is for:
 - **Placement.** A rule that must always hold is written as prose when it should
   be a hook; a monthly procedure sits in the file every session loads; the model
   does by reasoning what a script would do exactly.
+- **Feedback.** Whether the model has a check it can run to know its work is
+  done, and how strictly completion is enforced.
 - **Economy.** What every session pays in fixed context, set beside what was
-  actually used in the last 30 days.
+  actually used in the last 30 days; what one run of each subagent costs; how
+  often a session paid again for context it already held, and why.
 - **Routing.** Whether the model can tell your skills and subagents apart from
   their descriptions.
 - **Allocation.** Whether each role runs on a model and effort level that suits
@@ -97,7 +100,7 @@ other machines) is listed in its output under `not_measured`.
 ## Knowledge base
 
 ```bash
-python scripts/kb.py core                        # the ten review questions and the principle behind each
+python scripts/kb.py core                        # the review questions and the principle behind each
 python scripts/kb.py core placement              # the dozen claims to read first for one question
 python scripts/kb.py show hooks,settings --brief # everything on a topic, one line per claim
 python scripts/kb.py model claude-opus-5-5       # everything tied to one model

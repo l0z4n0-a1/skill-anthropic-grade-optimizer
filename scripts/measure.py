@@ -47,6 +47,8 @@ _HARNESS = json.loads((pathlib.Path(__file__).resolve().parent.parent / "kb" / "
 LISTING_CAP = _HARNESS["skill_listing_cap_chars"]["value"]
 IMPORT_DEPTH = _HARNESS["instruction_import_max_hops"]["value"]
 LONG_FILE_LINES = _HARNESS["instruction_file_recommended_max_lines"]["value"]
+CACHE_SHORT = _HARNESS["cache_lifetime_seconds_short"]["value"]
+CACHE_LONG = _HARNESS["cache_lifetime_seconds_long"]["value"]
 
 # Allowlists. A value is copied only when its key is named here; any other key is recorded by name.
 SAFE_FIELDS = {"name", "description", "when_to_use", "model", "effort", "tools", "disallowedTools", "allowed-tools",
@@ -378,11 +380,24 @@ def usage(home: pathlib.Path, days: int, unreadable: list) -> dict:
     messages: dict = {}   # message id -> (scope, model, usage); a resumed session repeats rows, so each id counts once
     rows_seen: set = set()  # row uuids, for the same reason
     tool_of: dict = {}
+    order: dict = collections.defaultdict(list)  # main-session file -> [(timestamp, message id)] in the order first seen
+    runs = collections.Counter()                 # subagent runs per agent type
     skipped = collections.Counter()
     root = home / "projects"
     files = [(p, "main") for p in root.glob("*/*.jsonl")] + [(p, "subagent") for p in root.glob("*/*/subagents/*.jsonl")]
 
-    def take(row: dict, scope: str, fallback_session: str) -> None:
+    def agent_type_of(path: pathlib.Path) -> str:
+        """Claude Code writes a small description beside each subagent transcript; it names the agent type."""
+        for suffix in (".meta.json", ".json"):
+            try:
+                meta = json.loads(path.with_suffix(suffix).read_text(encoding="utf-8"))
+            except (OSError, ValueError, RecursionError):
+                continue
+            if isinstance(meta, dict) and isinstance(meta.get("agentType"), str):
+                return clean_name(meta["agentType"])
+        return "(unknown)"
+
+    def take(row: dict, scope: str, fallback_session: str, agent: str) -> None:
         stamp = row.get("timestamp")
         if not isinstance(stamp, str):
             skipped["rows without a readable timestamp"] += 1
@@ -405,9 +420,12 @@ def usage(home: pathlib.Path, days: int, unreadable: list) -> dict:
             mid = msg.get("id")
             if isinstance(mid, str) and isinstance(msg.get("usage"), dict):
                 model = clean_name(msg.get("model"))
-                if mid not in messages and isinstance(row.get("effort"), str):
-                    effort[f"{model} @ {clean_name(row['effort'])}"] += 1
-                messages[mid] = (scope, model, msg["usage"])
+                if mid not in messages:
+                    if isinstance(row.get("effort"), str):
+                        effort[f"{model} @ {clean_name(row['effort'])}"] += 1
+                    if scope == "main":
+                        order[fallback_session].append((stamp, mid))
+                messages[mid] = (scope, model, msg["usage"], agent)
             for block in blocks:
                 bid = block.get("id")
                 if block.get("type") != "tool_use" or not isinstance(bid, str) or bid in tool_of:
@@ -442,6 +460,8 @@ def usage(home: pathlib.Path, days: int, unreadable: list) -> dict:
         except OSError as exc:
             unreadable.append(f"{path}: {type(exc).__name__}")
             continue
+        agent = agent_type_of(path) if scope == "subagent" else ""
+        before = len(messages)
         with handle:
             for line in handle:
                 if ('"tool_use"' not in line and '"tool_result"' not in line and '"usage"' not in line
@@ -450,16 +470,22 @@ def usage(home: pathlib.Path, days: int, unreadable: list) -> dict:
                 try:
                     row = json.loads(line)
                     if isinstance(row, dict):
-                        take(row, scope, str(path))
+                        take(row, scope, str(path), agent)
                 except (ValueError, TypeError, AttributeError, KeyError, RecursionError):
                     skipped["session lines that could not be read"] += 1
+        if scope == "subagent" and len(messages) > before:
+            runs[agent] += 1
     for reason, count in skipped.items():
         unreadable.append(f"{root}: {count} {reason}, not counted")
 
     tokens = collections.defaultdict(collections.Counter)
     by_scope = collections.defaultdict(collections.Counter)
-    for scope, model, use in messages.values():
-        for bucket in (tokens[f"{scope} | {model}"], by_scope[scope]):
+    by_agent = collections.defaultdict(collections.Counter)
+    agent_models = collections.defaultdict(collections.Counter)
+    for scope, model, use, agent in messages.values():
+        if scope == "subagent":
+            agent_models[agent][model] += 1
+        for bucket in (tokens[f"{scope} | {model}"], by_scope[scope]) + ((by_agent[agent],) if scope == "subagent" else ()):
             bucket["input"] += num(use.get("input_tokens"))
             bucket["cache_write"] += num(use.get("cache_creation_input_tokens"))
             bucket["cache_read"] += num(use.get("cache_read_input_tokens"))
@@ -472,6 +498,50 @@ def usage(home: pathlib.Path, days: int, unreadable: list) -> dict:
     def prompt_side(b) -> int:
         return b["input"] + b["cache_write"] + b["cache_read"]
 
+    def prompt_of(use: dict) -> int:
+        return num(use.get("input_tokens")) + num(use.get("cache_creation_input_tokens")) + num(use.get("cache_read_input_tokens"))
+
+    def seconds(stamp: str):
+        try:
+            return dt.datetime.fromisoformat(stamp[:19]).timestamp()
+        except ValueError:
+            return None
+
+    # A cache rebuild: a request that wrote most of its prompt to the cache although the request before it,
+    # in the same session, already held more than half of that prompt. The context was there and was paid for again.
+    rebuilds = collections.defaultdict(lambda: {"count": 0, "tokens_rewritten": 0})
+    lifetimes = collections.Counter()
+    for sequence in order.values():
+        prev = None
+        for stamp, mid in sequence:
+            _, model, use, _ = messages[mid]
+            written, prompt = num(use.get("cache_creation_input_tokens")), prompt_of(use)
+            split = as_dict(use.get("cache_creation"))
+            long_lived = num(split.get("ephemeral_1h_input_tokens")) > 0
+            lifetimes["long" if long_lived else "short"] += written
+            if prev and prompt and written > prompt / 2 and prev[2] > prompt / 2:
+                now, then = seconds(stamp), seconds(prev[0])
+                gap = now - then if now is not None and then is not None else 0
+                if gap > (CACHE_LONG if long_lived else CACHE_SHORT):
+                    cause = "after a pause longer than the cache lifetime"
+                elif model != prev[1]:
+                    cause = "after a model switch"
+                else:
+                    cause = "other (compaction, or a change to tools or settings; not told apart)"
+                rebuilds[cause]["count"] += 1
+                rebuilds[cause]["tokens_rewritten"] += written
+            prev = (stamp, model, prompt)
+
+    agent_runs = {}
+    for agent, bucket in sorted(by_agent.items(), key=lambda kv: -kv[1]["output"]):
+        n = max(runs[agent], 1)
+        agent_runs[agent] = {
+            "runs": runs[agent], "models": dict(agent_models[agent].most_common()),
+            "requests_per_run": round(bucket["requests"] / n, 1),
+            "output_tokens_per_run": round(bucket["output"] / n),
+            "prompt_side_tokens_per_run": round(prompt_side(bucket) / n),
+            "output_tokens": bucket["output"]}
+
     return {
         "window_days": days, "scope": "every project on this machine",
         "sessions": {k: len(v) for k, v in sessions.items()},
@@ -482,6 +552,11 @@ def usage(home: pathlib.Path, days: int, unreadable: list) -> dict:
         "subagent_share_of_output_tokens": round(by_scope["subagent"]["output"] / total["output"], 4) if total["output"] else None,
         "tool_calls": dict(tools.most_common()), "skill_invocations": dict(skills.most_common()),
         "typed_commands": dict(slash.most_common()), "agent_spawns": dict(agents.most_common()),
+        "agent_runs": agent_runs,
+        "cache_rebuilds": {"definition": "a main-session request that rewrote more than half of its prompt to the cache "
+                                         "when the previous request already held more than half of it",
+                           "by_cause": {k: dict(v) for k, v in sorted(rebuilds.items(), key=lambda kv: -kv[1]["tokens_rewritten"])},
+                           "cache_write_tokens_by_lifetime": dict(lifetimes)},
         "tool_result_chars": dict(result_chars.most_common(12)), "requests_by_model_and_effort": dict(effort.most_common())}
 
 
@@ -519,7 +594,7 @@ def build(home: pathlib.Path, project: pathlib.Path, days: int) -> dict:
             "the built-in system prompt and tool definitions", "MCP tool definitions (see /context in a session)",
             "bundled skills", "auto memory (MEMORY.md)", "sessions from other machines", "managed settings",
             "hooks defined by plugins or in skill and subagent frontmatter",
-            "whether the skill listing exceeds its context budget", "which agent each request's effort belongs to",
+            "whether the skill listing exceeds its context budget",
             "hook script paths that depend on an unresolved variable"],
         "fixed_context_est_tokens": {**fixed, "total": sum(fixed.values())},
         "instruction_files": instr, **pieces, "settings": settings, "description_overlaps": overlaps(pieces),
@@ -564,6 +639,11 @@ def summary(doc: dict) -> str:
         if use["cache_read_share_of_prompt_tokens"] is not None and use["subagent_share_of_output_tokens"] is not None:
             lines.append(f"  cache reads are {use['cache_read_share_of_prompt_tokens']:.1%} of prompt-side tokens; "
                          f"subagents produced {use['subagent_share_of_output_tokens']:.1%} of output tokens")
+        rewritten = sum(v["tokens_rewritten"] for v in use["cache_rebuilds"]["by_cause"].values())
+        if rewritten:
+            top_cause, top = next(iter(use["cache_rebuilds"]["by_cause"].items()))
+            lines.append(f"  cache rebuilds: {sum(v['count'] for v in use['cache_rebuilds']['by_cause'].values()):,} "
+                         f"rewrote {rewritten:,} tokens; most {top_cause} ({top['tokens_rewritten']:,})")
         never = doc["never_invoked_in_window"]
         lines.append(f"  never invoked in the window: {len(never['skills'])} of "
                      f"{sum(1 for s in doc['skills'] if s['model_invocable'])} model-invocable skills, "

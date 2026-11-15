@@ -47,11 +47,11 @@ person is choosing and not just obeying.
 itself may have changed. A pattern from before a recent change is a reason to
 measure again later.
 
-## The five questions
+## The six questions
 
 They go from the ones that usually change the most to the ones that change the
 least. Spend effort where the measurement points; a setup rarely has serious
-problems under all five. Before each, read its core claims with the command
+problems under all six. Before each, read its core claims with the command
 given. A setup is usually read by more than one model: use the one that served
 most main-session requests for the instruction file and the skills, and each
 subagent's own model for that subagent. When the configured model and the one
@@ -85,7 +85,31 @@ hook fails or times out are easy to get wrong, and a hook that cannot fail is
 not a gate. Weigh each hook with the permission mode beside it: the less the
 mode asks the person, the more a hook that fails open matters.
 
-### 2. What does every session pay, and what does it buy?
+### 2. Can the model check its own work?
+
+`kb.py core feedback`
+
+A model stops when the work looks done. Whether it is done depends on a check
+the model can run and read: a test suite, a type checker, a linter, a build, a
+script that compares output with an expectation. A setup that gives the model
+such a check and says exactly how to run it gets work that was verified; one
+that does not gets work that was declared finished. This is cheap to add and
+changes results more than most instruction text does.
+
+Look for the check and for how strictly it is applied. Does the instruction
+file name the exact commands, including how to run one test and not the whole
+suite? Is completion left to a request in the prompt, or does something enforce
+it: a hook that runs when the model stops, a reviewer in a fresh context? Do
+subagents that produce work say how that work is confirmed, and do they report
+what they verified apart from what they assumed? For work that runs unattended,
+the bar is higher, since nobody is watching.
+
+The finding here is usually an absence, so say what is missing and write the
+line or the hook that would supply it, using what the project already has. If
+the project has no automated check at all, that is the finding, and no
+instruction text substitutes for it.
+
+### 3. What does every session pay, and what does it buy?
 
 `kb.py core economy`
 
@@ -106,10 +130,20 @@ problem is conversation growth and trimming instruction files will not touch it.
 The core claims give Anthropic's order for the cost levers; follow it instead of
 leading with whichever is most visible.
 
+`cache_rebuilds` counts the times a session paid again for context it already
+held, and says why where the history shows it: the person paused longer than
+the cache lives, or switched model mid-session. Each one rewrites the whole
+working context at the cache-write price, so a large session resumed after a
+long pause is among the most expensive single requests there is. When pauses
+dominate, the remedy is a habit: clear or compact before stepping away, or
+start fresh on return. When model switches dominate, it is choosing the model
+before the session grows. The count is a floor: it sees main sessions only and
+cannot tell compaction from a tool or settings change.
+
 For MCP servers the script knows only that they exist. Ask for `/context` output
 when the setup has several.
 
-### 3. Can the model find the right piece?
+### 4. Can the model find the right piece?
 
 `kb.py core routing`
 
@@ -127,12 +161,15 @@ of trigger phrases grown one missed request at a time. Usage is evidence too:
 when one of two similar pieces takes all the invocations, the other is either
 redundant or losing requests it was built for.
 
-### 4. Is each role on the right model and effort?
+### 5. Is each role on the right model and effort?
 
 `kb.py core allocation`, then `kb.py model <id> --brief` for each model in use.
 
-Compare what each subagent declares with what ran
-(`requests_by_model_and_effort`, `tokens_by_scope_and_model`). Effort names do
+Compare what each subagent declares with what ran. `agent_runs` gives, for each
+agent type, how many times it ran, on which models, and what one run costs in
+requests and tokens; `requests_by_model_and_effort` and
+`tokens_by_scope_and_model` give the totals. An agent that names no model shows
+up under several, because it follows whatever the session was on. Effort names do
 not mean the same thing from one model to the next and defaults differ, so an
 agent that leaves effort unset, or a model unset, is making a choice the person
 may not know about. Look for roles whose work does not match their tier in
@@ -141,10 +178,15 @@ either direction.
 Anthropic's documentation says how model and effort are chosen and inherited,
 and what each current model is recommended for. It does not give a general rule
 for matching a tier to a kind of work, so a recommendation here is your
-judgment: label it so, and frame it as something to try with a quality check
-that would show it held.
+judgment: label it so. The person's own numbers are better evidence than any
+general ranking, because they measure this work. Frame a change as an
+experiment: move one role to another tier or effort, keep the quality check
+that would show whether the output held, and compare that role's cost per run
+in `agent_runs` once enough runs have accumulated. Public benchmarks rank models
+on tasks that are not the person's, so leave them out of the basis for a
+finding.
 
-### 5. Is each piece well made for what it does?
+### 6. Is each piece well made for what it does?
 
 Read individual pieces with `references/piece-review.md`, chosen by leverage:
 the instruction file every session loads, the skills and agents that carry the

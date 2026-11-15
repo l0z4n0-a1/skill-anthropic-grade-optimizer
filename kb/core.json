@@ -16,6 +16,18 @@
       "harness-027"
     ]
   },
+  "feedback": {
+    "principle": "Claude stops when the work looks done, so give it a pass/fail check it can run and say in the instruction file exactly how to run it. How strictly completion is checked ranges from a request in the prompt to a hook or a separate reviewer, and agents left to themselves tend to mark work complete without testing it.",
+    "claims": [
+      "harness-035",
+      "harness-024",
+      "harness-036",
+      "harness-064",
+      "orchestration-051",
+      "orchestration-015",
+      "prompting-027"
+    ]
+  },
   "economy": {
     "principle": "Every feature you add consumes context, so the setup should be judged by what loads at start and every turn against what it buys, and by what survives compaction. Caching matches an exact prefix, so changing the model or the early part of the request rebuilds it; cost levers are applied in order, free wins first and model choice last, and real usage is measured with /context and /usage.",
     "claims": [
