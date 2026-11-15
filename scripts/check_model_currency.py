@@ -35,11 +35,16 @@ if sys.platform == "win32":
 # When Anthropic releases a new model, bump this set + add a profile to modulation-matrix.yaml
 # in the same PR. CI will fail until both are updated together.
 KNOWN_CURRENT_MODELS = {
-    "claude-opus-4-7": {"profile_key": "opus-4-7", "released": "2026-Q2"},
-    "claude-opus-4-6": {"profile_key": "opus-4-6", "released": "2025-Q4"},
-    "claude-sonnet-4-6": {"profile_key": "sonnet-4-6", "released": "2025-Q4"},
+    "claude-fable-5": {"profile_key": "fable-5", "released": "2026-06-09"},
+    "claude-opus-4-8": {"profile_key": "opus-4-8", "released": "2026-H1"},
+    "claude-sonnet-5": {"profile_key": "sonnet-5", "released": "2026-H1"},
     "claude-haiku-4-5-20251001": {"profile_key": "haiku-4-5", "released": "2025-10-15"},
 }
+
+# Profiles kept in modulation-matrix.yaml for legacy models (still available per
+# platform.claude.com/docs/en/about-claude/models/overview "Legacy models", 2026-07-11).
+# Not flagged as stale by the reverse check; never delete their matrix cells.
+KNOWN_LEGACY_PROFILE_KEYS = {"opus-4-7", "opus-4-6", "sonnet-4-6"}
 
 SKILL_DIR = Path(__file__).resolve().parent.parent
 MATRIX_PATH = SKILL_DIR / "references" / "modulation-matrix.yaml"
@@ -84,6 +89,8 @@ def main():
     for key in matrix:
         if key in {"version", "date", "api_breaking_changes", "fallback_rules",
                    "universal_for_all_claude_4x_models"}:
+            continue
+        if key in KNOWN_LEGACY_PROFILE_KEYS:
             continue
         if isinstance(matrix[key], dict) and key not in profile_keys:
             drift.append(f"STALE PROFILE: matrix has '{key}' but it's not in KNOWN_CURRENT_MODELS")

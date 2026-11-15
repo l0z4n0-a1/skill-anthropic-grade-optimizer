@@ -4,16 +4,17 @@
 |---|---|
 | triggers_rule | AR-MODEL-018 |
 | applies_to | system_prompt, skill (code-review domain) |
-| model_specific | opus-4-7 |
+| model_specific | opus-4-8, sonnet-5, opus-4-7 |
 | verbatim | yes — copied byte-for-byte from doc |
-| source_url | https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/claude-prompting-best-practices#code-review-harnesses |
+| source_url | https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/prompting-claude-opus-4-8#code-review-harnesses |
 | insertion_pattern | replace any "be conservative" / "only high-severity" / "don't nitpick" phrasing in code-review system prompts |
 | voice_drift | low (Anthropic-canonical wording) |
 
 ## When to insert
 
-When AR-MODEL-018 fires (target=opus-4-7, code-review prompt contains recall-killing
-phrases like "only high-severity", "be conservative", "don't nitpick").
+When AR-MODEL-018 fires (target in {opus-4-8, sonnet-5, opus-4-7}, code-review
+prompt contains recall-killing phrases like "only high-severity",
+"be conservative", "don't nitpick").
 
 ## Verbatim block
 
@@ -23,8 +24,9 @@ Report every issue you find, including ones you are uncertain about or consider 
 
 ## Operator notes
 
-- Doctrine quote on regression: *"When a review prompt says things like 'only report
-  high-severity issues,' 'be conservative,' or 'don't nitpick,' Claude Opus 4.7 may
+- Doctrine quote on regression (2026-07-11, prompting-claude-opus-4-8; same text
+  for Sonnet 5 on its page): *"When a review prompt says things like 'only report
+  high-severity issues,' 'be conservative,' or 'don't nitpick,' Claude Opus 4.8 may
   follow that instruction more faithfully than earlier models did — it may investigate
   the code just as thoroughly, identify the bugs, and then not report findings it
   judges to be below your stated bar. This can show up as the model doing the same

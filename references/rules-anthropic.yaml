@@ -12,7 +12,7 @@
 #   D-EXAMPLE (8 rules)      — few-shot, multishot, <example> wrapping
 #   D-REASON (19 rules)      — CoT, adaptive thinking, effort, self-check
 #   D-CONTEXT (13 rules)     — long-context, caching, context rot
-#   D-MODEL  (25 rules)      — model-specific (Opus 4.7, 4.6, Sonnet 4.6, Haiku 4.5)
+#   D-MODEL  (25 rules)      — model-specific (Opus 4.8, Sonnet 5, Fable 5; legacy 4.7/4.6, Sonnet 4.6, Haiku 4.5)
 #   D-AGENT  (9 rules)       — stop conditions, ground truth, multi-agent
 #   D-EVAL   (5 rules)       — verification embedded, root cause
 #   D-TOOL   (14 rules)      — tool definitions, schemas, parallel calls
@@ -52,12 +52,25 @@ meta:
     Honest reconciliation: v1.1 advertised 158 in meta but the file already
     shipped 167 cited rules (drift). v1.2 corrects to actual count and adds
     22 new → 189 total.
+
+    2026-07-11 model re-derivation: all 39 model_specific rules flagged
+    needs-rederivation-2026-07 were re-derived against the restructured docs
+    (model-specific guidance moved to dedicated pages: prompting-claude-opus-4-8,
+    prompting-claude-sonnet-5, prompting-claude-fable-5). Quotes, anchors, and
+    model scopes updated for Opus 4.8 / Sonnet 5; Fable 5 inversions (effort,
+    subagents, prescriptiveness) noted inline. Rule count unchanged (189).
+    Known gap: Sonnet 5 tool-use inversion (more agentic; thinking-off caveat)
+    is carried as a note on AR-MODEL-013 — dedicated rule deferred to next
+    dissection to keep the count stable.
   changelog:
     - "v1.0: aspirational 190; collapsed to ~158 cited (declared)"
     - "v1.1: count declared as 158; actual was 167 (drift)"
     - "v1.2: count reconciled to 167; +22 currency patch → 189 total"
   source_attribution:
     base_doctrine: "platform.claude.com/docs/en/build-with-claude/prompt-engineering/claude-prompting-best-practices"
+    model_opus_4_8: "platform.claude.com/docs/en/build-with-claude/prompt-engineering/prompting-claude-opus-4-8"
+    model_sonnet_5: "platform.claude.com/docs/en/build-with-claude/prompt-engineering/prompting-claude-sonnet-5"
+    model_fable_5: "platform.claude.com/docs/en/build-with-claude/prompt-engineering/prompting-claude-fable-5"
     skills: "platform.claude.com/docs/en/agents-and-tools/agent-skills/best-practices"
     tools: "platform.claude.com/docs/en/agents-and-tools/tool-use/*"
     vision: "platform.claude.com/docs/en/build-with-claude/vision"
@@ -161,31 +174,37 @@ rules:
   severity: soft
   statement: "Positive examples beat negative instructions for steering output."
   verbatim_quote: "Positive examples showing how Claude can communicate with the appropriate level of concision tend to be more effective than negative examples or instructions that tell the model what not to do."
-  source_url: "https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/claude-prompting-best-practices#response-length-and-verbosity"
+  source_url: "https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/prompting-claude-opus-4-8#response-length-and-verbosity"
   detection_method: llm-judge
   applies_to: [all]
-  model_specific: opus-4-7
+  model_specific: "opus-4-8, sonnet-5, opus-4-7"
+  currency: verified-2026-07-11
+  notes: "Same sentence appears verbatim on the dedicated Sonnet 5 page (prompting-claude-sonnet-5#response-length-and-verbosity). Model-specific guidance moved off claude-prompting-best-practices into per-model pages 2026-07."
 
 - rule_id: AR-CLAR-009
   dimension: D-CLAR
   severity: soft
   statement: "On Opus 4.5+, dial back aggressive language ('CRITICAL: You MUST') in tool/skill prompts — causes overtriggering."
-  verbatim_quote: "Where you might have said 'CRITICAL: You MUST use this tool when...', you can use more normal prompting like 'Use this tool when...'."
+  verbatim_quote: "Claude Opus 4.5 and Claude Opus 4.6 are also more responsive to the system prompt than previous models. If your prompts were designed to reduce undertriggering on tools or skills, these models may now overtrigger. The fix is to dial back any aggressive language. Where you might have said 'CRITICAL: You MUST use this tool when...', you can use more normal prompting like 'Use this tool when...'."
   source_url: "https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/claude-prompting-best-practices#tool-usage"
   detection_method: regex
   detection_hint: "ALL-CAPS imperatives, 'CRITICAL', 'MUST', exclamation overload — but ONLY in skill/subagent contexts (D9 conflict-resolution)"
   applies_to: [skill, subagent, system_prompt]
-  model_specific: "opus-4-5+, 4-6, 4-7"
+  model_specific: "opus-4-5, opus-4-6"
+  currency: verified-2026-07-11
+  notes: "Live page names only Opus 4.5/4.6 for this behavior. On Opus 4.8 / Sonnet 5 the analogous concern is literal instruction following (AR-CLAR-010/012) — aggressive emphasis is followed literally rather than merely overtriggering."
 
 - rule_id: AR-CLAR-010
   dimension: D-CLAR
   severity: hard
-  statement: "On Opus 4.7, prompts are interpreted literally — state scope explicitly."
-  verbatim_quote: "Claude Opus 4.7 interprets prompts more literally and explicitly than Claude Opus 4.6, particularly at lower effort levels. It will not silently generalize an instruction from one item to another, and it will not infer requests you didn't make."
-  source_url: "https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/claude-prompting-best-practices#more-literal-instruction-following"
+  statement: "On Opus 4.8, Sonnet 5, and Opus 4.7, prompts are interpreted literally — state scope explicitly."
+  verbatim_quote: "Claude Opus 4.8 interprets prompts literally and explicitly, particularly at lower effort levels. It does not silently generalize an instruction from one item to another, and it does not infer requests you didn't make."
+  source_url: "https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/prompting-claude-opus-4-8#more-literal-instruction-following"
   detection_method: llm-judge
   applies_to: [all]
-  model_specific: opus-4-7
+  model_specific: "opus-4-8, sonnet-5, opus-4-7"
+  currency: verified-2026-07-11
+  notes: "Sonnet 5 page states the identical sentence for Sonnet 5 (prompting-claude-sonnet-5#more-literal-instruction-following). Fable 5 has strong instruction following without the literalism caveat — over-prescriptive prompts degrade its output (see modulation-matrix fable-5.optimal_density)."
 
 - rule_id: AR-CLAR-011
   dimension: D-CLAR
@@ -200,12 +219,14 @@ rules:
 - rule_id: AR-CLAR-012
   dimension: D-CLAR
   severity: hard
-  statement: "On Opus 4.7, state scope explicitly when applying instructions broadly."
+  statement: "On Opus 4.8, Sonnet 5, and Opus 4.7, state scope explicitly when applying instructions broadly."
   verbatim_quote: "If you need Claude to apply an instruction broadly, state the scope explicitly (for example, 'Apply this formatting to every section, not just the first one')."
-  source_url: "https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/claude-prompting-best-practices#more-literal-instruction-following"
+  source_url: "https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/prompting-claude-opus-4-8#more-literal-instruction-following"
   detection_method: llm-judge
   applies_to: [all]
-  model_specific: opus-4-7
+  model_specific: "opus-4-8, sonnet-5, opus-4-7"
+  currency: verified-2026-07-11
+  notes: "Same sentence verbatim on prompting-claude-sonnet-5#more-literal-instruction-following."
 
 - rule_id: AR-CLAR-013
   dimension: D-CLAR
@@ -415,11 +436,12 @@ rules:
   dimension: D-REASON
   severity: soft
   statement: "Prefer general thinking instructions over prescriptive step-by-step plans."
-  verbatim_quote: "Prefer general instructions over prescriptive steps. A prompt like 'think thoroughly' often produces better reasoning than a hand-written step-by-step plan."
-  source_url: "https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/claude-prompting-best-practices#leverage-thinking"
+  verbatim_quote: "Prefer general instructions over prescriptive steps. A prompt like 'think thoroughly' often produces better reasoning than a hand-written step-by-step plan. Claude's reasoning frequently exceeds what a human would prescribe."
+  source_url: "https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/claude-prompting-best-practices#leverage-thinking--interleaved-thinking-capabilities"
   detection_method: heuristic
   applies_to: [system_prompt, user_prompt]
-  model_specific: "Claude 4 family"
+  model_specific: "all current models (incl. Fable 5, Opus 4.8, Sonnet 5)"
+  currency: verified-2026-07-11
 
 - rule_id: AR-REASON-002
   dimension: D-REASON
@@ -435,10 +457,12 @@ rules:
   severity: soft
   statement: "When extended thinking disabled, Opus 4.5 sensitive to 'think' — use 'consider'/'evaluate'/'reason through'."
   verbatim_quote: "When extended thinking is disabled, Claude Opus 4.5 is particularly sensitive to the word 'think' and its variants."
-  source_url: "https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/claude-prompting-best-practices#leverage-thinking"
+  source_url: "https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/claude-prompting-best-practices#leverage-thinking--interleaved-thinking-capabilities"
   detection_method: regex
   applies_to: [system_prompt, user_prompt]
   model_specific: "Claude Opus 4.5"
+  currency: verified-2026-07-11
+  notes: "Live page still scopes this to Opus 4.5 only — no equivalent caveat published for 4.8/Sonnet 5."
 
 - rule_id: AR-REASON-004
   dimension: D-REASON
@@ -453,22 +477,25 @@ rules:
   dimension: D-REASON
   severity: soft
   statement: "Replace blanket defaults with targeted instructions ('Use X when it would enhance understanding'>'Default to using X')."
-  verbatim_quote: "Replace blanket defaults with more targeted instructions."
+  verbatim_quote: "Replace blanket defaults with more targeted instructions. Instead of 'Default to using [tool],' add guidance like 'Use [tool] when it would enhance your understanding of the problem.'"
   source_url: "https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/claude-prompting-best-practices#overthinking-and-excessive-thoroughness"
   detection_method: regex
   detection_hint: "Phrases like 'Default to', 'Always use', 'If in doubt use'"
   applies_to: [system_prompt, claude_md, agent]
-  model_specific: "Claude Opus 4.6, 4.7"
+  model_specific: "Claude Opus 4.6"
+  currency: verified-2026-07-11
+  notes: "Live section now names Opus 4.6 only; the 4.8/Sonnet-5 analog is explicit tool-triggering guidance (AR-MODEL-013)."
 
 - rule_id: AR-REASON-006
   dimension: D-REASON
   severity: hard
   statement: "Remove over-prompting — 'If in doubt, use [tool]' causes overtriggering on newer models."
-  verbatim_quote: "Remove over-prompting. Tools that undertriggered in previous models are likely to trigger appropriately now."
+  verbatim_quote: "Remove over-prompting. Tools that undertriggered in previous models are likely to trigger appropriately now. Instructions like 'If in doubt, use [tool]' will cause overtriggering."
   source_url: "https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/claude-prompting-best-practices#overthinking-and-excessive-thoroughness"
   detection_method: regex
   applies_to: [system_prompt, claude_md, agent]
-  model_specific: "Claude Opus 4.6, 4.7"
+  model_specific: "Claude Opus 4.6"
+  currency: verified-2026-07-11
 
 - rule_id: AR-REASON-007
   dimension: D-REASON
@@ -492,31 +519,36 @@ rules:
   dimension: D-REASON
   severity: soft
   statement: "Choose an approach and commit; avoid revisiting decisions without contradicting evidence."
-  verbatim_quote: "When you're deciding how to approach a problem, choose an approach and commit to it."
+  verbatim_quote: "When you're deciding how to approach a problem, choose an approach and commit to it. Avoid revisiting decisions unless you encounter new information that directly contradicts your reasoning."
   source_url: "https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/claude-prompting-best-practices#overthinking-and-excessive-thoroughness"
   detection_method: heuristic
   applies_to: [system_prompt, claude_md]
   model_specific: "Claude Opus 4.6"
+  currency: verified-2026-07-11
 
 - rule_id: AR-REASON-010
   dimension: D-REASON
   severity: hard
-  statement: "On Opus 4.7, raise effort level rather than prompting around shallow reasoning."
-  verbatim_quote: "If you observe shallow reasoning on complex problems, raise effort to high or xhigh rather than prompting around it."
-  source_url: "https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/claude-prompting-best-practices#calibrating-effort-and-thinking-depth"
+  statement: "On Opus 4.8, Sonnet 5, and Opus 4.7, raise effort level rather than prompting around shallow reasoning."
+  verbatim_quote: "If you observe shallow reasoning on complex problems, raise effort to `high` or `xhigh` rather than prompting around it. If you need to keep effort at `low` for latency, add targeted guidance."
+  source_url: "https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/prompting-claude-opus-4-8#calibrating-effort-and-thinking-depth"
   detection_method: heuristic
   applies_to: [api_config]
-  model_specific: "Claude Opus 4.7"
+  model_specific: "opus-4-8, sonnet-5, opus-4-7"
+  currency: verified-2026-07-11
+  notes: "Same sentence verbatim on prompting-claude-sonnet-5#calibrating-effort-and-thinking-depth."
 
 - rule_id: AR-REASON-011
   dimension: D-REASON
   severity: hard
-  statement: "Adaptive thinking is the recommended thinking mode for Opus 4.7/4.6 and Sonnet 4.6."
-  verbatim_quote: "Adaptive thinking is the recommended way to use extended thinking with Claude Opus 4.7, Claude Opus 4.6, and Claude Sonnet 4.6."
-  source_url: "https://platform.claude.com/docs/en/build-with-claude/adaptive-thinking"
+  statement: "Adaptive thinking is the thinking mode for all current models — always-on for Fable 5/Mythos 5, on by default for Sonnet 5, explicit opt-in for Opus 4.8/4.7/4.6 and Sonnet 4.6."
+  verbatim_quote: "Claude Opus 4.6, Claude Opus 4.7, Claude Opus 4.8, and Claude Sonnet 4.6 use adaptive thinking (thinking: {type: 'adaptive'}), where Claude dynamically decides when and how much to think. On Claude Fable 5 and Claude Mythos 5, thinking is always on and adaptive thinking is the only mode."
+  source_url: "https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/claude-prompting-best-practices#leverage-thinking--interleaved-thinking-capabilities"
   detection_method: regex
   applies_to: [api_config]
-  model_specific: "Opus 4.7, 4.6, Sonnet 4.6"
+  model_specific: "fable-5, mythos-5, sonnet-5, opus-4-8, opus-4-7, opus-4-6, sonnet-4-6"
+  currency: verified-2026-07-11
+  notes: "Sonnet 5 default: 'On Claude Sonnet 5, adaptive thinking is on by default. Requests without a thinking field run with adaptive thinking.' (prompting-claude-sonnet-5#calibrating-effort-and-thinking-depth). Opus 4.8: 'thinking is off unless you explicitly set thinking: {type: adaptive}' (prompting-claude-opus-4-8#calibrating-effort-and-thinking-depth). On Fable 5, configuring thinking at all is an anti-pattern — thinking:{type:disabled} returns 400."
 
 - rule_id: AR-REASON-012
   dimension: D-REASON
@@ -633,12 +665,13 @@ rules:
 - rule_id: AR-CONTEXT-008
   dimension: D-CONTEXT
   severity: soft
-  statement: "On Sonnet 4.6/4.5/Haiku 4.5, leverage context awareness — Claude tracks remaining context."
-  verbatim_quote: "Claude Sonnet 4.6, Claude Sonnet 4.5, and Claude Haiku 4.5 feature context awareness."
-  source_url: "https://platform.claude.com/docs/en/build-with-claude/context-windows"
+  statement: "On Sonnet 5, Sonnet 4.6/4.5, and Haiku 4.5, leverage context awareness — Claude tracks remaining context."
+  verbatim_quote: "Claude Sonnet 5, Claude Sonnet 4.6, Claude Sonnet 4.5, and Claude Haiku 4.5 feature context awareness, enabling the model to track its remaining context window (that is, its 'token budget') throughout a conversation."
+  source_url: "https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/claude-prompting-best-practices#context-awareness-and-multi-window-workflows"
   detection_method: llm-judge
   applies_to: [system_prompt, agent]
-  model_specific: "Sonnet 4.6, Sonnet 4.5, Haiku 4.5"
+  model_specific: "sonnet-5, sonnet-4-6, sonnet-4-5, haiku-4-5"
+  currency: verified-2026-07-11
 
 - rule_id: AR-CONTEXT-009
   dimension: D-CONTEXT
@@ -692,72 +725,84 @@ rules:
 - rule_id: AR-MODEL-001
   dimension: D-MODEL
   severity: soft
-  statement: "On Opus 4.7, identify model correctly in self-knowledge prompts."
-  verbatim_quote: "The assistant is Claude, created by Anthropic. The current model is Claude Opus 4.7."
+  statement: "Identify the model correctly in self-knowledge prompts (doc sample currently names Opus 4.8; current family also includes Fable 5 claude-fable-5, Sonnet 5 claude-sonnet-5, Haiku 4.5)."
+  verbatim_quote: "The assistant is Claude, created by Anthropic. The current model is Claude Opus 4.8."
   source_url: "https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/claude-prompting-best-practices"
   detection_method: regex
   applies_to: [system_prompt]
-  model_specific: "Claude Opus 4.7"
+  model_specific: "Claude Opus 4.8"
+  notes: "Fact refreshed 2026-07-11 against live best-practices page (was: 'The current model is Claude Opus 4.7')."
 
 - rule_id: AR-MODEL-002
   dimension: D-MODEL
   severity: hard
-  statement: "Migrate away from prefilled responses on Claude 4.6+."
-  verbatim_quote: "Starting with Claude 4.6 models and Claude Mythos Preview, prefilled responses on the last assistant turn are no longer supported."
-  source_url: "https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/claude-prompting-best-practices"
+  statement: "Migrate away from prefilled responses on Claude 4.6+ (includes Opus 4.8, Sonnet 5, Fable 5 — all return 400)."
+  verbatim_quote: "Starting with Claude 4.6 models and Claude Mythos Preview, prefilled responses (providing a partial assistant message for Claude to continue from) on the last assistant turn are no longer supported. Requests with prefilled assistant messages to these models return a 400 error."
+  source_url: "https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/claude-prompting-best-practices#migrating-away-from-prefilled-responses"
   detection_method: code-check
   applies_to: [api_config]
-  model_specific: "Claude 4.6+, Mythos Preview"
+  model_specific: "claude-4-6+ (opus-4-8, sonnet-5, fable-5 included), mythos-preview"
+  currency: verified-2026-07-11
+  notes: "Sonnet 5 confirmation: 'Prefilling the assistant message returns a 400 error on Claude Sonnet 5, the same as on Claude Sonnet 4.6.' (models/migration-guide)."
 
 - rule_id: AR-MODEL-003
   dimension: D-MODEL
   severity: soft
-  statement: "On Opus 4.7, start with xhigh effort for coding/agentic; minimum high for intelligence-sensitive tasks."
-  verbatim_quote: "Start with the new xhigh effort level for coding and agentic use cases, and use a minimum of high effort for most intelligence-sensitive use cases."
-  source_url: "https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/claude-prompting-best-practices#calibrating-effort-and-thinking-depth"
+  statement: "On Opus 4.8/4.7, start with xhigh effort for coding/agentic; minimum high for intelligence-sensitive. On Sonnet 5, keep the high default and raise to xhigh only for the hardest coding/agentic tasks. Do NOT extend to Fable 5 (start high — lower effort often exceeds prior xhigh)."
+  verbatim_quote: "Start with the `xhigh` effort level for coding and agentic use cases, and use a minimum of `high` effort for most intelligence-sensitive use cases."
+  source_url: "https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/prompting-claude-opus-4-8#calibrating-effort-and-thinking-depth"
   detection_method: code-check
   applies_to: [api_config]
-  model_specific: "Claude Opus 4.7"
+  model_specific: "opus-4-8, opus-4-7; sonnet-5 variant (high default, xhigh hardest); NOT fable-5"
+  currency: verified-2026-07-11
+  notes: "Sonnet 5: 'On Claude Sonnet 5, effort defaults to high, the same as on Claude Sonnet 4.6. For the hardest coding and agentic tasks, raise effort to xhigh.' (prompting-claude-sonnet-5#calibrating-effort-and-thinking-depth). Fable 5 inversion sourced in modulation-matrix fable-5.effort_recommended."
 
 - rule_id: AR-MODEL-004
   dimension: D-MODEL
   severity: soft
-  statement: "On Opus 4.7 at max/xhigh effort, set max_tokens >= 64k."
-  verbatim_quote: "If you are running Claude Opus 4.7 at max or xhigh effort, set a large max output token budget. We recommend starting at 64k tokens."
-  source_url: "https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/claude-prompting-best-practices"
+  statement: "On Opus 4.8/4.7 at max/xhigh effort, set max_tokens >= 64k; on Sonnet 5 leave max_tokens headroom at high+ (new tokenizer ~30% inflation can truncate 4.6-tuned limits)."
+  verbatim_quote: "If you are running Claude Opus 4.8 at `max` or `xhigh` effort, set a large max output token budget so the model has room to think and act across its subagents and tool calls. Start at 64k tokens and tune from there."
+  source_url: "https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/prompting-claude-opus-4-8#calibrating-effort-and-thinking-depth"
   detection_method: code-check
   applies_to: [api_config]
-  model_specific: "Claude Opus 4.7"
+  model_specific: "opus-4-8, opus-4-7, sonnet-5"
+  currency: verified-2026-07-11
+  notes: "Sonnet 5 variant: 'leave headroom in max_tokens so the model has room for thinking and tool calls... max_tokens limits tuned for Claude Sonnet 4.6 may truncate equivalent output' due to the ~30%-more-tokens tokenizer (prompting-claude-sonnet-5#calibrating-effort-and-thinking-depth)."
 
 - rule_id: AR-MODEL-005
   dimension: D-MODEL
   severity: soft
-  statement: "On Opus 4.7 with subagents, give explicit guidance on when subagents are desirable."
-  verbatim_quote: "Do not spawn a subagent for work you can complete directly in a single response."
-  source_url: "https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/claude-prompting-best-practices"
+  statement: "On Opus 4.8/4.7 with subagents, give explicit guidance on when subagents are desirable (model spawns fewer by default). Reversed on Fable 5, which delegates readily — guidance should govern, not encourage."
+  verbatim_quote: "Do not spawn a subagent for work you can complete directly in a single response (e.g. refactoring a function you can already see). Spawn multiple subagents in the same turn when fanning out across items or reading multiple files."
+  source_url: "https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/prompting-claude-opus-4-8#controlling-subagent-spawning"
   detection_method: heuristic
   applies_to: [system_prompt, agent]
-  model_specific: "Claude Opus 4.7"
+  model_specific: "opus-4-8, opus-4-7; REVERSED on fable-5"
+  currency: verified-2026-07-11
+  notes: "Fable 5 direction sourced in modulation-matrix fable-5.subagent_behavior ('dispatches parallel subagents more readily; prefer async orchestration')."
 
 - rule_id: AR-MODEL-006
   dimension: D-MODEL
   severity: hard
   statement: "Avoid generic AI aesthetics in frontend output."
-  verbatim_quote: "NEVER use generic AI-generated aesthetics like overused font families (Inter, Roboto, Arial), cliched color schemes (particularly purple gradients), predictable layouts."
-  source_url: "https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/claude-prompting-best-practices"
+  verbatim_quote: "NEVER use generic AI-generated aesthetics like overused font families (Inter, Roboto, Arial, system fonts), cliched color schemes (particularly purple gradients on white or dark backgrounds), predictable layouts and component patterns, and cookie-cutter design that lacks context-specific character. Use unique fonts, cohesive colors and themes, and animations for effects and micro-interactions."
+  source_url: "https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/prompting-claude-opus-4-8#design-and-frontend-defaults"
   detection_method: regex
   applies_to: [system_prompt, frontend_design_skill]
-  model_specific: "Claude Opus 4.7"
+  model_specific: "opus-4-8, sonnet-5, opus-4-7"
+  currency: verified-2026-07-11
+  notes: "Snippet published verbatim on both prompting-claude-opus-4-8 and prompting-claude-sonnet-5 (#design-and-frontend-defaults)."
 
 - rule_id: AR-MODEL-007
   dimension: D-MODEL
   severity: soft
   statement: "Instruct parallel tool calling when no dependencies exist."
   verbatim_quote: "If you intend to call multiple tools and there are no dependencies between the tool calls, make all of the independent tool calls in parallel."
-  source_url: "https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/claude-prompting-best-practices"
+  source_url: "https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/claude-prompting-best-practices#optimize-parallel-tool-calling"
   detection_method: regex
   applies_to: [system_prompt, agent]
-  model_specific: "Claude 4 family"
+  model_specific: "all current models"
+  currency: verified-2026-07-11
 
 - rule_id: AR-MODEL-008
   dimension: D-MODEL
@@ -786,6 +831,7 @@ rules:
   detection_method: heuristic
   applies_to: [system_prompt, claude_md]
   model_specific: "Claude Opus 4.5, 4.6"
+  currency: verified-2026-07-11
 
 - rule_id: AR-MODEL-011
   dimension: D-MODEL
@@ -1104,12 +1150,14 @@ rules:
 - rule_id: AR-VISION-004
   dimension: D-VISION
   severity: hard
-  statement: "Opus 4.7 native max: 2576px long edge, 4784 tokens; other models: 1568px, 1568 tokens."
-  verbatim_quote: "For Claude Opus 4.7: 4784 tokens, and at most 2576 pixels on the long edge."
-  source_url: "https://platform.claude.com/docs/en/build-with-claude/vision"
+  statement: "High-resolution tier (Fable 5, Mythos 5, Opus 4.8, Opus 4.7, Sonnet 5): 2576px long edge / 4784 visual tokens. Standard tier (all other models): 1568px / 1568 tokens."
+  verbatim_quote: "High-resolution: Claude Fable 5, Claude Mythos 5, Claude Opus 4.8, Claude Opus 4.7, Claude Sonnet 5 — max long edge 2576 px, max visual tokens 4784. Standard: All other models — 1568 px, 1568. High-resolution support is automatic on the listed models and requires no beta header or client-side opt-in."
+  source_url: "https://platform.claude.com/docs/en/build-with-claude/vision#resolution-and-token-cost"
   detection_method: code-check
   applies_to: [api_config]
-  model_specific: "Claude Opus 4.7"
+  model_specific: "fable-5, mythos-5, opus-4-8, opus-4-7, sonnet-5"
+  currency: verified-2026-07-11
+  notes: "Quote transcribes the resolution-tier table rows plus the sentence following it. High-res images can cost up to ~3x the visual tokens of standard tier — downsample when fidelity isn't needed."
 
 - rule_id: AR-VISION-005
   dimension: D-VISION
@@ -1150,12 +1198,14 @@ rules:
 - rule_id: AR-VISION-009
   dimension: D-VISION
   severity: hard
-  statement: "Computer use coordinates: Opus 4.7 1:1 with image pixels (no scale); pre-4.7 needs rescale."
-  verbatim_quote: "Claude Opus 4.7 supports up to 2576 pixels on the long edge, and its coordinates are 1:1 with image pixels."
+  statement: "Computer use resolution: Sonnet 5 / Opus 4.8 / Opus 4.7 accept up to 2576px long edge; earlier models cap at 1568px + ~1.15MP and need screenshot resize + coordinate rescale."
+  verbatim_quote: "Limits vary by model. Claude Sonnet 5, Claude Opus 4.8, and Claude Opus 4.7 accept up to 2576 pixels on the long edge; earlier models accept up to 1568 pixels on the long edge and approximately 1.15 megapixels total."
   source_url: "https://platform.claude.com/docs/en/agents-and-tools/tool-use/computer-use-tool"
   detection_method: code-check
   applies_to: [computer_use]
-  model_specific: "Claude Opus 4.7"
+  model_specific: "sonnet-5, opus-4-8, opus-4-7"
+  currency: verified-2026-07-11
+  notes: "Coordinates are absolute pixels relative to the image Claude sees after resizing (vision-coordinates doc); within the 2576px limit no rescale math is needed. Beta header computer-use-2025-11-24 covers Sonnet 5, Opus 4.8/4.7/4.6, Sonnet 4.6, Opus 4.5."
 
 - rule_id: AR-VISION-010
   dimension: D-VISION
@@ -1661,23 +1711,26 @@ rules:
 - rule_id: AR-CLAR-016
   dimension: D-CLAR
   severity: soft
-  statement: "On Opus 4.7, response length is task-calibrated; tune prompts when product needs fixed verbosity."
-  verbatim_quote: "Claude Opus 4.7 calibrates response length to how complex it judges the task to be, rather than defaulting to a fixed verbosity."
-  source_url: "https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/claude-prompting-best-practices#response-length-and-verbosity"
+  statement: "On Opus 4.8, Sonnet 5, and Opus 4.7, response length is task-calibrated; tune prompts when product needs fixed verbosity."
+  verbatim_quote: "Claude Opus 4.8 calibrates response length to how complex it judges the task to be, rather than defaulting to a fixed verbosity. This usually means shorter answers on simple lookups and much longer ones on open-ended analysis."
+  source_url: "https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/prompting-claude-opus-4-8#response-length-and-verbosity"
   detection_method: llm-judge
   applies_to: [system_prompt, user_prompt]
-  model_specific: opus-4-7
+  model_specific: "opus-4-8, sonnet-5, opus-4-7"
+  currency: verified-2026-07-11
   notes: "Canonical fix snippet stored at assets/snippets/concise-output.md"
 
 - rule_id: AR-CLAR-017
   dimension: D-CLAR
   severity: soft
-  statement: "Opus 4.7 prose is more direct, less validation-forward, fewer emoji than 4.6 — re-evaluate voice prompts on migration."
-  verbatim_quote: "Claude Opus 4.7 is more direct and opinionated, with less validation-forward phrasing and fewer emoji than Claude Opus 4.6's warmer style. If your product relies on a specific voice, re-evaluate style prompts against the new baseline."
-  source_url: "https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/claude-prompting-best-practices#tone-and-writing-style"
+  statement: "Opus 4.8 prose is direct, opinionated, minimal validation-forward phrasing, sparing emoji — re-evaluate voice prompts on migration."
+  verbatim_quote: "Claude Opus 4.8 tends toward a direct, opinionated style with minimal validation-forward phrasing and sparing emoji use. If your product relies on a specific voice, re-evaluate style prompts against the new baseline."
+  source_url: "https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/prompting-claude-opus-4-8#tone-and-writing-style"
   detection_method: llm-judge
   applies_to: [system_prompt]
-  model_specific: opus-4-7
+  model_specific: "opus-4-8, opus-4-7"
+  currency: verified-2026-07-11
+  notes: "Sonnet 5 page keeps only the generic 'prose style may shift — re-evaluate style prompts' advice, without a directional claim."
 
 # --- D-REASON additions (effort semantics + adaptive steerability) ---
 
@@ -1685,38 +1738,43 @@ rules:
   dimension: D-REASON
   severity: soft
   severity_amplification:
-    when: "target_model == opus-4-7 AND workload_signal includes coding|agentic"
+    when: "target_model in [opus-4-8, sonnet-5, opus-4-7] AND workload_signal includes coding|agentic"
     to: hard
-  statement: "On Opus 4.7, effort levels are strict — low/medium scope tighter and risk under-thinking on moderately complex tasks."
-  verbatim_quote: "Claude Opus 4.7 respects effort levels strictly, especially at the low end. At low and medium, the model scopes its work to what was asked rather than going above and beyond. This is good for latency and cost, but on moderately complex tasks running at low effort there is some risk of under-thinking."
-  source_url: "https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/claude-prompting-best-practices#calibrating-effort-and-thinking-depth"
+  statement: "On Opus 4.8, Sonnet 5, and Opus 4.7, effort levels are strict — low/medium scope tighter and risk under-thinking on moderately complex tasks."
+  verbatim_quote: "Claude Opus 4.8 respects effort levels strictly, especially at the low end. At `low` and `medium`, the model scopes its work to what was asked rather than going above and beyond. This is good for latency and cost, but on moderately complex tasks running at `low` effort there is some risk of under-thinking."
+  source_url: "https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/prompting-claude-opus-4-8#calibrating-effort-and-thinking-depth"
   detection_method: code-check
   detection_hint: "If api_config.effort in ['low','medium'] and artifact requests multi-step coding/agentic work → flag"
   applies_to: [api_config]
-  model_specific: opus-4-7
+  model_specific: "opus-4-8, sonnet-5, opus-4-7"
+  currency: verified-2026-07-11
+  notes: "Doc says 'some risk of under-thinking' (probabilistic, not breaker). Same sentence for Sonnet 5 on its page; Sonnet 5 cross-model mapping: 'Claude Sonnet 5 at medium is comparable in intelligence to Claude Sonnet 4.6 at high, and Claude Sonnet 5 at high is comparable to Claude Sonnet 4.6 at max.'"
   notes: "Doc says 'some risk of under-thinking' (probabilistic, not breaker). Severity soft by default; amplified to hard when coding/agentic workload signal present (zero-tolerance addition gated on context)."
 
 - rule_id: AR-REASON-018
   dimension: D-REASON
   severity: soft
-  statement: "On Opus 4.7, start with xhigh effort for coding/agentic; use minimum high for intelligence-sensitive."
-  verbatim_quote: "Start with the new xhigh effort level for coding and agentic use cases, and use a minimum of high effort for most intelligence-sensitive use cases."
-  source_url: "https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/claude-prompting-best-practices#calibrating-effort-and-thinking-depth"
+  statement: "On Opus 4.8/4.7, start with xhigh effort for coding/agentic; minimum high for intelligence-sensitive. Sonnet 5: high default, xhigh only for hardest coding/agentic. NOT applicable to Fable 5 (start high)."
+  verbatim_quote: "Start with the `xhigh` effort level for coding and agentic use cases, and use a minimum of `high` effort for most intelligence-sensitive use cases."
+  source_url: "https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/prompting-claude-opus-4-8#calibrating-effort-and-thinking-depth"
   detection_method: code-check
   applies_to: [api_config]
-  model_specific: opus-4-7
-  notes: "Distinct from AR-MODEL-003 (which only states the recommendation); AR-REASON-018 is the detection rule."
+  model_specific: "opus-4-8, opus-4-7; sonnet-5 variant; NOT fable-5"
+  currency: verified-2026-07-11
+  notes: "Distinct from AR-MODEL-003 (which only states the recommendation); AR-REASON-018 is the detection rule. Detection must branch by target model: flagging effort<xhigh on a fable-5 coding config is a FALSE POSITIVE (fable-5.effort_recommended: high for most tasks)."
 
 - rule_id: AR-REASON-019
   dimension: D-REASON
   severity: soft
   statement: "Adaptive-thinking triggering is steerable; add prompt guidance when model thinks more than desired."
-  verbatim_quote: "The triggering behavior for adaptive thinking is steerable. If you find the model thinking more often than you'd like — which can happen with large or complex system prompts — add guidance to steer it."
-  source_url: "https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/claude-prompting-best-practices#calibrating-effort-and-thinking-depth"
+  verbatim_quote: "The triggering behavior for adaptive thinking is steerable. If you find the model thinking more often than you'd like, which can happen with large or complex system prompts, add guidance to steer it. As always, measure the effect of any prompting changes on performance."
+  source_url: "https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/prompting-claude-opus-4-8#calibrating-effort-and-thinking-depth"
   detection_method: hybrid   # regex detects presence of steering snippet; LLM grades adequacy
   detection_hint: "Pass-1 regex looks for 'thinking'/'adaptive' + steering verbs ('respond directly'/'when in doubt'/'only when'). Pass-2 grades whether steering matches workload."
   applies_to: [system_prompt]
-  model_specific: "opus-4-7, opus-4-6, sonnet-4-6"
+  model_specific: "opus-4-8, sonnet-5, opus-4-7, opus-4-6, sonnet-4-6"
+  currency: verified-2026-07-11
+  notes: "Canonical snippet at assets/snippets/steer-thinking.md. Sonnet 5 wording: 'If you find the model emitting thinking blocks more often than you'd like' — relevant there because adaptive thinking is ON by default."
   notes: "Canonical snippet at assets/snippets/steer-thinking.md. detection_method changed to hybrid in E1-fix — pure regex cannot detect 'absence of adequate steering'."
 
 # --- D-MODEL additions (Opus 4.7 behavioral shifts + code-review + frontend + interactive coding) ---
@@ -1724,92 +1782,104 @@ rules:
 - rule_id: AR-MODEL-013
   dimension: D-MODEL
   severity: soft
-  statement: "On Opus 4.7, tool usage decreases by default — raise effort or prompt explicitly when more tool use is wanted."
-  verbatim_quote: "Claude Opus 4.7 has a tendency to use tools less often than Claude Opus 4.6 and to use reasoning more. This produces better results in most cases. However, increasing the effort setting is a useful lever to increase the level of tool usage, especially in knowledge work."
-  source_url: "https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/claude-prompting-best-practices#tool-use-triggering"
+  statement: "On Opus 4.8/4.7, tool usage decreases by default — raise effort or prompt explicitly when more tool use is wanted. INVERTED on Sonnet 5 (more agentic than 4.6 by default) except with thinking disabled, where it under-reaches for tools."
+  verbatim_quote: "Claude Opus 4.8 has a tendency to favor reasoning over tool calls. This produces better results in most cases. However, increasing the effort setting is a useful lever to increase the level of tool usage, especially in knowledge work."
+  source_url: "https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/prompting-claude-opus-4-8#tool-use-triggering"
   detection_method: llm-judge
   applies_to: [system_prompt, agent]
-  model_specific: opus-4-7
+  model_specific: "opus-4-8, opus-4-7; INVERTED on sonnet-5 (thinking-off is the exception)"
+  currency: verified-2026-07-11
+  notes: "Sonnet 5 divergence (prompting-claude-sonnet-5#tool-use-triggering): 'Claude Sonnet 5 is more agentic than Claude Sonnet 4.6 by default and will reach for tools and run self-verification loops more readily. With thinking disabled, the model is less likely to reach for tools or consider searching; if you rely on tool calls with thinking off, add an explicit nudge in the system prompt.' Candidate for a dedicated sonnet-5 rule in the next dissection (would change meta.total_unique_rules)."
 
 - rule_id: AR-MODEL-014
   dimension: D-MODEL
   severity: soft
-  statement: "Remove legacy 'after N tool calls, summarize' scaffolding — Opus 4.7 emits higher-quality progress updates by default."
-  verbatim_quote: "Claude Opus 4.7 provides more regular, higher-quality updates to the user throughout long agentic traces. If you've added scaffolding to force interim status messages ('After every 3 tool calls, summarize progress'), try removing it."
-  source_url: "https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/claude-prompting-best-practices#user-facing-progress-updates"
+  statement: "Remove legacy 'after N tool calls, summarize' scaffolding — Opus 4.8, Sonnet 5, and Opus 4.7 emit higher-quality progress updates by default."
+  verbatim_quote: "Claude Opus 4.8 provides more regular, higher-quality updates to the user throughout long agentic traces. If you've added scaffolding to force interim status messages ('After every 3 tool calls, summarize progress'), try removing it."
+  source_url: "https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/prompting-claude-opus-4-8#user-facing-progress-updates"
   detection_method: regex
   detection_hint: "Phrases like 'after every N tool', 'summarize every', 'every N actions provide a status'"
   applies_to: [system_prompt, agent, claude_md]
-  model_specific: opus-4-7
+  model_specific: "opus-4-8, sonnet-5, opus-4-7"
+  currency: verified-2026-07-11
   applicability: extrapolated  # doc context is API harness; claude_md inclusion is reasonable extrapolation per gaps.md G4
 
 - rule_id: AR-MODEL-015
   dimension: D-MODEL
   severity: soft
-  statement: "Subagent spawning is steerable on Opus 4.7 — provide explicit guidance about when subagents are desirable."
-  verbatim_quote: "Claude Opus 4.7 tends to spawn fewer subagents by default. However, this behavior is steerable through prompting; give Claude Opus 4.7 explicit guidance around when subagents are desirable."
-  source_url: "https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/claude-prompting-best-practices#controlling-subagent-spawning"
+  statement: "Subagent spawning is steerable on Opus 4.8/4.7 (fewer by default) — provide explicit guidance about when subagents are desirable. Reversed on Fable 5: delegates readily, guidance should govern rather than encourage."
+  verbatim_quote: "Claude Opus 4.8 tends to spawn fewer subagents by default. However, this behavior is steerable through prompting; give Claude Opus 4.8 explicit guidance around when subagents are desirable."
+  source_url: "https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/prompting-claude-opus-4-8#controlling-subagent-spawning"
   detection_method: regex
   detection_hint: "If artifact mentions 'subagent' or 'Task(' but lacks guidance phrase ('do not spawn'/'spawn when')"
   applies_to: [system_prompt, agent, claude_md]
-  model_specific: opus-4-7
+  model_specific: "opus-4-8, opus-4-7; REVERSED on fable-5"
+  currency: verified-2026-07-11
   notes: "Canonical snippet at assets/snippets/subagent-spawning-4-7.md"
 
 - rule_id: AR-MODEL-016
   dimension: D-MODEL
   severity: soft
-  statement: "On Opus 4.7, design defaults persist (cream + serif + terracotta); generic negation bounces — specify concrete alternative or ask model to propose options."
+  statement: "On Opus 4.8 (cream + serif + terracotta house style) and Sonnet 5, design defaults persist; generic negation bounces — specify concrete alternative or ask model to propose options."
   verbatim_quote: "This default is persistent. Generic instructions ('don't use cream,' 'make it clean and minimal') tend to shift the model to a different fixed palette rather than producing variety. Two approaches work reliably: 1. Specify a concrete alternative... 2. Have the model propose options before building."
-  source_url: "https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/claude-prompting-best-practices#design-and-frontend-defaults"
+  source_url: "https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/prompting-claude-opus-4-8#design-and-frontend-defaults"
   detection_method: regex
   detection_hint: "Frontend artifact + negation about design defaults ('don't use cream'/'avoid purple') without concrete palette spec"
   applies_to: [system_prompt, skill]
   domain_signal: ["frontend", "design", "landing page", "UI", "palette", "color scheme", "CSS"]
-  model_specific: opus-4-7
+  model_specific: "opus-4-8, sonnet-5, opus-4-7"
+  currency: verified-2026-07-11
+  notes: "Sonnet 5: propose-options is 'the recommended way to produce meaningfully different design directions across runs' since temperature is not accepted (prompting-claude-sonnet-5#design-and-frontend-defaults)."
 
 - rule_id: AR-MODEL-017
   dimension: D-MODEL
   severity: soft
-  statement: "Opus 4.7 needs lighter frontend-design scaffolding than 4.6 — overly long anti-AI-slop prompts now overcorrect."
-  verbatim_quote: "Claude Opus 4.7 requires less frontend design prompting than previous models to avoid generic patterns that users call the 'AI slop' aesthetic. With earlier models, we recommended a lengthier prompt snippet... Claude Opus 4.7 generates distinctive, creative frontends with more minimal prompting guidance."
-  source_url: "https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/claude-prompting-best-practices#design-and-frontend-defaults"
+  statement: "Opus 4.8 needs lighter frontend-design scaffolding than earlier models — overly long anti-AI-slop prompts now overcorrect."
+  verbatim_quote: "Claude Opus 4.8 requires less frontend design prompting than previous models to avoid generic patterns that users call the 'AI slop' aesthetic. With earlier models, Anthropic recommended a lengthier prompt snippet... Claude Opus 4.8 generates distinctive, creative frontends with more minimal prompting guidance."
+  source_url: "https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/prompting-claude-opus-4-8#design-and-frontend-defaults"
   detection_method: llm-judge
   applies_to: [system_prompt, skill]
   domain_signal: ["frontend", "design", "AI slop", "frontend-design"]
-  model_specific: opus-4-7
+  model_specific: "opus-4-8, opus-4-7"
+  currency: verified-2026-07-11
+  notes: "Sonnet 5 page recommends the same short <frontend_aesthetics> snippet alongside the variety approaches."
 
 - rule_id: AR-MODEL-018
   dimension: D-MODEL
   severity: hard
-  statement: "Code-review harness regression on Opus 4.7: 'be conservative' / 'only high-severity' instructions reduce recall — use 'report every issue, downstream filter ranks them'."
-  verbatim_quote: "When a review prompt says things like 'only report high-severity issues,' 'be conservative,' or 'don't nitpick,' Claude Opus 4.7 may follow that instruction more faithfully than earlier models did — it may investigate the code just as thoroughly, identify the bugs, and then not report findings it judges to be below your stated bar... Report every issue you find, including ones you are uncertain about or consider low-severity. Do not filter for importance or confidence at this stage - a separate verification step will do that."
-  source_url: "https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/claude-prompting-best-practices#code-review-harnesses"
+  statement: "Code-review harness regression on Opus 4.8, Sonnet 5, and Opus 4.7: 'be conservative' / 'only high-severity' instructions reduce recall — use 'report every issue, downstream filter ranks them'."
+  verbatim_quote: "When a review prompt says things like 'only report high-severity issues,' 'be conservative,' or 'don't nitpick,' Claude Opus 4.8 may follow that instruction more faithfully than earlier models did: it may investigate the code just as thoroughly, identify the bugs, and then not report findings it judges to be below your stated bar... Report every issue you find, including ones you are uncertain about or consider low-severity. Do not filter for importance or confidence at this stage - a separate verification step will do that."
+  source_url: "https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/prompting-claude-opus-4-8#code-review-harnesses"
   detection_method: regex
   detection_hint: "Code-review prompt with 'only high-severity'/'be conservative'/'don't nitpick' phrases"
   applies_to: [system_prompt, skill]
   domain_signal: ["code review", "find bugs", "review prompt", "code-review harness", "PR review"]
-  model_specific: opus-4-7
+  model_specific: "opus-4-8, sonnet-5, opus-4-7"
+  currency: verified-2026-07-11
   notes: "High leverage. Canonical snippet at assets/snippets/code-review-coverage.md"
 
 - rule_id: AR-MODEL-019
   dimension: D-MODEL
   severity: soft
-  statement: "Opus 4.7 uses more tokens in interactive coding than autonomous; specify task/intent/constraints upfront and minimize required user turns."
-  verbatim_quote: "Claude Opus 4.7's token usage and behavior can differ between autonomous, asynchronous coding agents with a single user turn and interactive, synchronous coding agents with multiple user turns. Specifically, it tends to use more tokens in interactive settings, primarily because it reasons more after user turns."
-  source_url: "https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/claude-prompting-best-practices#interactive-coding-products"
+  statement: "Opus 4.8 uses more tokens in interactive coding than autonomous; specify task/intent/constraints upfront and minimize required user turns."
+  verbatim_quote: "Claude Opus 4.8's token usage and behavior can differ between autonomous, asynchronous coding agents with a single user turn and interactive, synchronous coding agents with multiple user turns. Specifically, it tends to use more tokens in interactive settings, primarily because it reasons more after user turns."
+  source_url: "https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/prompting-claude-opus-4-8#interactive-coding-products"
   detection_method: llm-judge
   applies_to: [system_prompt, agent]
-  model_specific: opus-4-7
+  model_specific: "opus-4-8, opus-4-7; sonnet-5 (same upfront-specification guidance, without the reasons-more-after-user-turns claim)"
+  currency: verified-2026-07-11
 
 - rule_id: AR-MODEL-020
   dimension: D-MODEL
   severity: soft
-  statement: "Computer use on Opus 4.7: 1080p balances perf/cost; 720p or 1366×768 for cost-sensitive workloads."
-  verbatim_quote: "In our computer use testing, we find that sending images at 1080p provides a good balance of performance and cost. For particularly cost-sensitive workloads, we recommend 720p or 1366×768 as lower-cost options with strong performance."
-  source_url: "https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/claude-prompting-best-practices#computer-use"
+  statement: "Computer use on Opus 4.8 / Sonnet 5 / Opus 4.7: 1080p balances perf/cost; 720p or 1366×768 for cost-sensitive workloads."
+  verbatim_quote: "Internal computer use testing shows that sending images at 1080p provides a good balance of performance and cost. For particularly cost-sensitive workloads, 720p or 1366×768 are lower-cost options with strong performance."
+  source_url: "https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/prompting-claude-opus-4-8#computer-use"
   detection_method: code-check
   applies_to: [computer_use, api_config]
-  model_specific: opus-4-7
+  model_specific: "opus-4-8, sonnet-5, opus-4-7"
+  currency: verified-2026-07-11
+  notes: "Same guidance verbatim on prompting-claude-sonnet-5#computer-use, which also states Sonnet 5 supports the computer_20251124 tool version."
 
 # --- D-MODEL: prefill migration patterns ---
 # AR-MODEL-021..025 form a cohesive group covering the 5 canonical migration
@@ -1822,11 +1892,12 @@ rules:
   dimension: D-MODEL
   severity: soft
   statement: "Prefill migration pattern (Structured Outputs) — replaces prefilled JSON/YAML schema constraint."
-  verbatim_quote: "The Structured Outputs feature is designed specifically to constrain Claude's responses to follow a given schema. Try simply asking the model to conform to your output structure first, as newer models can reliably match complex schemas when told to."
+  verbatim_quote: "The Structured Outputs feature is designed specifically to constrain Claude's responses to follow a given schema. Try asking the model to conform to your output structure first, as newer models can reliably match complex schemas when told to, especially if implemented with retries."
   source_url: "https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/claude-prompting-best-practices#migrating-away-from-prefilled-responses"
   detection_method: code-check
   applies_to: [api_config]
-  model_specific: "claude-4-6+"
+  model_specific: "claude-4-6+ (opus-4-8, sonnet-5, fable-5 included)"
+  currency: verified-2026-07-11
   group: prefill-migration
 
 - rule_id: AR-MODEL-022
@@ -1837,7 +1908,8 @@ rules:
   source_url: "https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/claude-prompting-best-practices#migrating-away-from-prefilled-responses"
   detection_method: code-check
   applies_to: [api_config]
-  model_specific: "claude-4-6+"
+  model_specific: "claude-4-6+ (opus-4-8, sonnet-5, fable-5 included)"
+  currency: verified-2026-07-11
   group: prefill-migration
 
 - rule_id: AR-MODEL-023
@@ -1848,7 +1920,8 @@ rules:
   source_url: "https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/claude-prompting-best-practices#migrating-away-from-prefilled-responses"
   detection_method: code-check
   applies_to: [api_config]
-  model_specific: "claude-4-6+"
+  model_specific: "claude-4-6+ (opus-4-8, sonnet-5, fable-5 included)"
+  currency: verified-2026-07-11
   group: prefill-migration
 
 - rule_id: AR-MODEL-024
@@ -1859,7 +1932,8 @@ rules:
   source_url: "https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/claude-prompting-best-practices#migrating-away-from-prefilled-responses"
   detection_method: code-check
   applies_to: [api_config]
-  model_specific: "claude-4-6+"
+  model_specific: "claude-4-6+ (opus-4-8, sonnet-5, fable-5 included)"
+  currency: verified-2026-07-11
   group: prefill-migration
 
 - rule_id: AR-MODEL-025
@@ -1870,7 +1944,8 @@ rules:
   source_url: "https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/claude-prompting-best-practices#migrating-away-from-prefilled-responses"
   detection_method: code-check
   applies_to: [api_config]
-  model_specific: "claude-4-6+"
+  model_specific: "claude-4-6+ (opus-4-8, sonnet-5, fable-5 included)"
+  currency: verified-2026-07-11
   group: prefill-migration
 
 # --- D-CC/D-SKILL additions (skill-authoring refinements from agent-skills/best-practices) ---
