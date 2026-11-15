@@ -1,0 +1,464 @@
+[
+  {
+    "id": "cc-how-claude-code-works",
+    "url": "https://code.claude.com/docs/en/how-claude-code-works.md",
+    "tier": 1,
+    "topic": "harness"
+  },
+  {
+    "id": "cc-features-overview",
+    "url": "https://code.claude.com/docs/en/features-overview.md",
+    "tier": 1,
+    "topic": "harness"
+  },
+  {
+    "id": "cc-claude-directory",
+    "url": "https://code.claude.com/docs/en/claude-directory.md",
+    "tier": 1,
+    "topic": "harness"
+  },
+  {
+    "id": "cc-best-practices",
+    "url": "https://code.claude.com/docs/en/best-practices.md",
+    "tier": 1,
+    "topic": "harness"
+  },
+  {
+    "id": "cc-common-workflows",
+    "url": "https://code.claude.com/docs/en/common-workflows.md",
+    "tier": 1,
+    "topic": "harness"
+  },
+  {
+    "id": "cc-large-codebases",
+    "url": "https://code.claude.com/docs/en/large-codebases.md",
+    "tier": 1,
+    "topic": "harness"
+  },
+  {
+    "id": "cc-debug-your-config",
+    "url": "https://code.claude.com/docs/en/debug-your-config.md",
+    "tier": 1,
+    "topic": "harness"
+  },
+  {
+    "id": "cc-tools-reference",
+    "url": "https://code.claude.com/docs/en/tools-reference.md",
+    "tier": 1,
+    "topic": "harness"
+  },
+  {
+    "id": "cc-commands",
+    "url": "https://code.claude.com/docs/en/commands.md",
+    "tier": 1,
+    "topic": "harness"
+  },
+  {
+    "id": "cc-sessions",
+    "url": "https://code.claude.com/docs/en/sessions.md",
+    "tier": 1,
+    "topic": "harness"
+  },
+  {
+    "id": "cc-checkpointing",
+    "url": "https://code.claude.com/docs/en/checkpointing.md",
+    "tier": 1,
+    "topic": "harness"
+  },
+  {
+    "id": "cc-headless",
+    "url": "https://code.claude.com/docs/en/headless.md",
+    "tier": 1,
+    "topic": "harness"
+  },
+  {
+    "id": "cc-scheduled-tasks",
+    "url": "https://code.claude.com/docs/en/scheduled-tasks.md",
+    "tier": 1,
+    "topic": "harness"
+  },
+  {
+    "id": "cc-goal",
+    "url": "https://code.claude.com/docs/en/goal.md",
+    "tier": 1,
+    "topic": "harness"
+  },
+  {
+    "id": "cc-statusline",
+    "url": "https://code.claude.com/docs/en/statusline.md",
+    "tier": 1,
+    "topic": "harness"
+  },
+  {
+    "id": "cc-env-vars",
+    "url": "https://code.claude.com/docs/en/env-vars.md",
+    "tier": 1,
+    "topic": "harness"
+  },
+  {
+    "id": "cc-sandboxing",
+    "url": "https://code.claude.com/docs/en/sandboxing.md",
+    "tier": 1,
+    "topic": "harness"
+  },
+  {
+    "id": "cc-code-mode",
+    "url": "https://code.claude.com/docs/en/code-mode.md",
+    "tier": 1,
+    "topic": "harness"
+  },
+  {
+    "id": "cc-context-window",
+    "url": "https://code.claude.com/docs/en/context-window.md",
+    "tier": 1,
+    "topic": "context"
+  },
+  {
+    "id": "cc-prompt-caching",
+    "url": "https://code.claude.com/docs/en/prompt-caching.md",
+    "tier": 1,
+    "topic": "context"
+  },
+  {
+    "id": "cc-memory",
+    "url": "https://code.claude.com/docs/en/memory.md",
+    "tier": 1,
+    "topic": "context"
+  },
+  {
+    "id": "cc-sub-agents",
+    "url": "https://code.claude.com/docs/en/sub-agents.md",
+    "tier": 1,
+    "topic": "subagents"
+  },
+  {
+    "id": "cc-agents",
+    "url": "https://code.claude.com/docs/en/agents.md",
+    "tier": 1,
+    "topic": "subagents"
+  },
+  {
+    "id": "cc-agent-teams",
+    "url": "https://code.claude.com/docs/en/agent-teams.md",
+    "tier": 1,
+    "topic": "subagents"
+  },
+  {
+    "id": "cc-workflows",
+    "url": "https://code.claude.com/docs/en/workflows.md",
+    "tier": 1,
+    "topic": "subagents"
+  },
+  {
+    "id": "cc-skills",
+    "url": "https://code.claude.com/docs/en/skills.md",
+    "tier": 1,
+    "topic": "skills"
+  },
+  {
+    "id": "cc-output-styles",
+    "url": "https://code.claude.com/docs/en/output-styles.md",
+    "tier": 1,
+    "topic": "skills"
+  },
+  {
+    "id": "cc-hooks-guide",
+    "url": "https://code.claude.com/docs/en/hooks-guide.md",
+    "tier": 1,
+    "topic": "hooks"
+  },
+  {
+    "id": "cc-hooks",
+    "url": "https://code.claude.com/docs/en/hooks.md",
+    "tier": 1,
+    "topic": "hooks"
+  },
+  {
+    "id": "cc-mcp",
+    "url": "https://code.claude.com/docs/en/mcp.md",
+    "tier": 1,
+    "topic": "mcp"
+  },
+  {
+    "id": "cc-plugins-overview",
+    "url": "https://code.claude.com/docs/en/plugins/overview.md",
+    "tier": 1,
+    "topic": "plugins"
+  },
+  {
+    "id": "cc-plugins-components",
+    "url": "https://code.claude.com/docs/en/plugins/components.md",
+    "tier": 1,
+    "topic": "plugins"
+  },
+  {
+    "id": "cc-plugins-relevance",
+    "url": "https://code.claude.com/docs/en/plugins/relevance.md",
+    "tier": 1,
+    "topic": "plugins"
+  },
+  {
+    "id": "cc-plugin-evals",
+    "url": "https://code.claude.com/docs/en/plugin-evals.md",
+    "tier": 1,
+    "topic": "plugins"
+  },
+  {
+    "id": "cc-plugins-measure",
+    "url": "https://code.claude.com/docs/en/plugins/measure.md",
+    "tier": 1,
+    "topic": "plugins"
+  },
+  {
+    "id": "cc-settings",
+    "url": "https://code.claude.com/docs/en/settings.md",
+    "tier": 1,
+    "topic": "settings"
+  },
+  {
+    "id": "cc-settings-reference",
+    "url": "https://code.claude.com/docs/en/settings-reference.md",
+    "tier": 1,
+    "topic": "settings"
+  },
+  {
+    "id": "cc-permissions",
+    "url": "https://code.claude.com/docs/en/permissions.md",
+    "tier": 1,
+    "topic": "settings"
+  },
+  {
+    "id": "cc-permission-modes",
+    "url": "https://code.claude.com/docs/en/permission-modes.md",
+    "tier": 1,
+    "topic": "settings"
+  },
+  {
+    "id": "cc-model-config",
+    "url": "https://code.claude.com/docs/en/model-config.md",
+    "tier": 1,
+    "topic": "models"
+  },
+  {
+    "id": "cc-fast-mode",
+    "url": "https://code.claude.com/docs/en/fast-mode.md",
+    "tier": 1,
+    "topic": "models"
+  },
+  {
+    "id": "cc-advisor",
+    "url": "https://code.claude.com/docs/en/advisor.md",
+    "tier": 1,
+    "topic": "models"
+  },
+  {
+    "id": "cc-costs",
+    "url": "https://code.claude.com/docs/en/costs.md",
+    "tier": 1,
+    "topic": "cost"
+  },
+  {
+    "id": "cc-monitoring-usage",
+    "url": "https://code.claude.com/docs/en/monitoring-usage.md",
+    "tier": 1,
+    "topic": "cost"
+  },
+  {
+    "id": "pl-prompt-engineering-overview",
+    "url": "https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/overview.md",
+    "tier": 1,
+    "topic": "prompting"
+  },
+  {
+    "id": "pl-prompt-engineering-claude-prompting-best-practices",
+    "url": "https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/claude-prompting-best-practices.md",
+    "tier": 1,
+    "topic": "prompting"
+  },
+  {
+    "id": "pl-prompt-engineering-prompting-claude-opus-5-5",
+    "url": "https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/prompting-claude-opus-5-5.md",
+    "tier": 1,
+    "topic": "prompting"
+  },
+  {
+    "id": "pl-prompt-engineering-prompting-claude-sonnet-5-5",
+    "url": "https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/prompting-claude-sonnet-5-5.md",
+    "tier": 1,
+    "topic": "prompting"
+  },
+  {
+    "id": "pl-prompt-engineering-prompting-claude-haiku-5-5",
+    "url": "https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/prompting-claude-haiku-5-5.md",
+    "tier": 1,
+    "topic": "prompting"
+  },
+  {
+    "id": "pl-prompt-engineering-prompting-claude-fable-5-2",
+    "url": "https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/prompting-claude-fable-5-2.md",
+    "tier": 1,
+    "topic": "prompting"
+  },
+  {
+    "id": "pl-opus-5-5-whats-new-opus-5-5",
+    "url": "https://platform.claude.com/docs/en/models/opus-5-5/whats-new-opus-5-5.md",
+    "tier": 1,
+    "topic": "models"
+  },
+  {
+    "id": "pl-sonnet-5-5-whats-new-sonnet-5-5",
+    "url": "https://platform.claude.com/docs/en/models/sonnet-5-5/whats-new-sonnet-5-5.md",
+    "tier": 1,
+    "topic": "models"
+  },
+  {
+    "id": "pl-haiku-5-5-whats-new-haiku-5-5",
+    "url": "https://platform.claude.com/docs/en/models/haiku-5-5/whats-new-haiku-5-5.md",
+    "tier": 1,
+    "topic": "models"
+  },
+  {
+    "id": "pl-fable-5-2-whats-new-fable-5-2",
+    "url": "https://platform.claude.com/docs/en/models/fable-5-2/whats-new-fable-5-2.md",
+    "tier": 1,
+    "topic": "models"
+  },
+  {
+    "id": "pl-models-choosing-a-model",
+    "url": "https://platform.claude.com/docs/en/about-claude/models/choosing-a-model.md",
+    "tier": 1,
+    "topic": "models"
+  },
+  {
+    "id": "pl-models-overview",
+    "url": "https://platform.claude.com/docs/en/about-claude/models/overview.md",
+    "tier": 1,
+    "topic": "models"
+  },
+  {
+    "id": "pl-build-with-claude-effort",
+    "url": "https://platform.claude.com/docs/en/build-with-claude/effort.md",
+    "tier": 1,
+    "topic": "models"
+  },
+  {
+    "id": "pl-models-optimizing-for-cost-and-intelligence",
+    "url": "https://platform.claude.com/docs/en/about-claude/models/optimizing-for-cost-and-intelligence.md",
+    "tier": 1,
+    "topic": "cost"
+  },
+  {
+    "id": "pl-agent-skills-overview",
+    "url": "https://platform.claude.com/docs/en/agents-and-tools/agent-skills/overview.md",
+    "tier": 1,
+    "topic": "skills"
+  },
+  {
+    "id": "pl-agent-skills-best-practices",
+    "url": "https://platform.claude.com/docs/en/agents-and-tools/agent-skills/best-practices.md",
+    "tier": 1,
+    "topic": "skills"
+  },
+  {
+    "id": "pl-build-with-claude-context-windows",
+    "url": "https://platform.claude.com/docs/en/build-with-claude/context-windows.md",
+    "tier": 1,
+    "topic": "context"
+  },
+  {
+    "id": "pl-tool-use-define-tools",
+    "url": "https://platform.claude.com/docs/en/agents-and-tools/tool-use/define-tools.md",
+    "tier": 1,
+    "topic": "tools"
+  },
+  {
+    "id": "pl-test-and-evaluate-develop-tests",
+    "url": "https://platform.claude.com/docs/en/test-and-evaluate/develop-tests.md",
+    "tier": 1,
+    "topic": "evals"
+  },
+  {
+    "id": "bd-prompt-audit",
+    "bundled": "shared/prompt-audit.md",
+    "tier": 1,
+    "topic": "prompting"
+  },
+  {
+    "id": "bd-model-migration",
+    "bundled": "shared/model-migration.md",
+    "tier": 1,
+    "topic": "prompting"
+  },
+  {
+    "id": "bd-cost-optimization",
+    "bundled": "shared/cost-optimization.md",
+    "tier": 1,
+    "topic": "cost"
+  },
+  {
+    "id": "bd-prompt-caching",
+    "bundled": "shared/prompt-caching.md",
+    "tier": 1,
+    "topic": "cost"
+  },
+  {
+    "id": "bd-agent-design",
+    "bundled": "shared/agent-design.md",
+    "tier": 1,
+    "topic": "orchestration"
+  },
+  {
+    "id": "bd-eval-audit",
+    "bundled": "shared/evals/eval-audit.md",
+    "tier": 1,
+    "topic": "evals"
+  },
+  {
+    "id": "eng-building-effective-agents",
+    "url": "https://www.anthropic.com/engineering/building-effective-agents",
+    "tier": 2,
+    "topic": "orchestration"
+  },
+  {
+    "id": "eng-built-multi-agent-research-system",
+    "url": "https://www.anthropic.com/engineering/built-multi-agent-research-system",
+    "tier": 2,
+    "topic": "orchestration"
+  },
+  {
+    "id": "eng-effective-harnesses-for-long-running-agents",
+    "url": "https://www.anthropic.com/engineering/effective-harnesses-for-long-running-agents",
+    "tier": 2,
+    "topic": "orchestration"
+  },
+  {
+    "id": "eng-effective-context-engineering-for-ai-agents",
+    "url": "https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents",
+    "tier": 2,
+    "topic": "context"
+  },
+  {
+    "id": "eng-writing-tools-for-agents",
+    "url": "https://www.anthropic.com/engineering/writing-tools-for-agents",
+    "tier": 2,
+    "topic": "tools"
+  },
+  {
+    "id": "eng-code-execution-with-mcp",
+    "url": "https://www.anthropic.com/engineering/code-execution-with-mcp",
+    "tier": 2,
+    "topic": "tools"
+  },
+  {
+    "id": "eng-equipping-agents-for-the-real-world-with-agent-skills",
+    "url": "https://www.anthropic.com/engineering/equipping-agents-for-the-real-world-with-agent-skills",
+    "tier": 2,
+    "topic": "skills"
+  },
+  {
+    "id": "eng-claude-code-best-practices",
+    "url": "https://www.anthropic.com/engineering/claude-code-best-practices",
+    "tier": 2,
+    "topic": "harness"
+  }
+]

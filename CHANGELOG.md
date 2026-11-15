@@ -2,6 +2,38 @@
 
 All notable changes to the anthropic-grade-optimizer skill follow [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and adhere to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.0] - 2026-11-14 - From rule engine to setup instrument
+
+Version 2 is a different tool. Claude Code now ships `/doctor prompt-audit` for
+line-level review of instruction text, which is what version 1 did, so version 2
+moves to what the built-in checks do not ask: how the pieces of a setup work
+together, and whether each is good at its job.
+
+### Added
+- `scripts/measure.py`: lists every piece of a setup, when it loads, its estimated
+  context cost, and 30 days of usage by model, tool, skill and agent from local
+  session history. `--compare` shows what changed between two runs.
+- `kb/`: 822 claims from 77 Anthropic sources, each with a verbatim quote, source
+  and read date, covering Claude Opus 5.5, Sonnet 5.5, Haiku 5.5 and Fable 5.2.
+- `scripts/kb_gate.py`: rejects any claim whose quote is not in its source
+  snapshot; after a fetch, this is also how stale claims are found.
+- `scripts/kb_fetch.py` and `scripts/kb.py`: fetch sources by content hash, and
+  select claims by topic and model for a review.
+- `references/setup-review.md`, `piece-review.md`, `model-fit.md`,
+  `maintaining.md`, and `kb/EXTRACTION.md`.
+- Tests for measurement, the gate's failure cases and knowledge-base structure.
+
+### Changed
+- `SKILL.md` rewritten around three jobs: review a whole setup, review one piece,
+  fit a setup to a model.
+- Model-specific knowledge lives only in claims. A new model is a knowledge-base
+  update, not an edit to the skill.
+
+### Removed
+- The 189-rule engine, its regex detectors, the 0-100 score, the voice-drift gate,
+  snippets and fixtures. All remain at the `v1.0.0` tag. The score is not
+  replaced: findings are ordered by effect and backed by measured figures.
+
 ## [1.0.1] — 2026-07-11 — Model Currency: Opus 4.8 / Sonnet 5 / Fable 5
 
 ### Changed

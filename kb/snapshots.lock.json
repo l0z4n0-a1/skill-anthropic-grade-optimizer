@@ -1,0 +1,464 @@
+{
+  "bd-agent-design": {
+    "bytes": 8837,
+    "fetched": "2026-11-14",
+    "sha256": "b179ea16233b16f53a3d8f6ed58465464050142de80dedcc9e453b672d06a201",
+    "source": "bundled:shared/agent-design.md"
+  },
+  "bd-cost-optimization": {
+    "bytes": 59353,
+    "fetched": "2026-11-14",
+    "sha256": "4a24ae16f7701dec0006d5e00013c0cf461e8efb34f7c670331ebadf4b7409ff",
+    "source": "bundled:shared/cost-optimization.md"
+  },
+  "bd-eval-audit": {
+    "bytes": 28096,
+    "fetched": "2026-11-14",
+    "sha256": "ee40ffada6d5e10967e713184e49f7e65c936e5c7702ca753221405fb168a79e",
+    "source": "bundled:shared/evals/eval-audit.md"
+  },
+  "bd-model-migration": {
+    "bytes": 398987,
+    "fetched": "2026-11-14",
+    "sha256": "b1c39653778607966c7520bc1724fc6491934ecba3680552363d594252fa4554",
+    "source": "bundled:shared/model-migration.md"
+  },
+  "bd-prompt-audit": {
+    "bytes": 52134,
+    "fetched": "2026-11-14",
+    "sha256": "c9cc10b37fed56cf3aaf9e1b4b6ced39a13123d31398e6cdbbff48a054b4ae53",
+    "source": "bundled:shared/prompt-audit.md"
+  },
+  "bd-prompt-caching": {
+    "bytes": 34199,
+    "fetched": "2026-11-14",
+    "sha256": "f4bf717f29d80ece4834359d7dae8a602be51dedfe92a7b1a801a959e78b02e9",
+    "source": "bundled:shared/prompt-caching.md"
+  },
+  "cc-advisor": {
+    "bytes": 18577,
+    "fetched": "2026-11-14",
+    "sha256": "37dad77df876763c46d676d951e915b90e93df69fd501550f1774f92f1afd1a7",
+    "source": "https://code.claude.com/docs/en/advisor.md"
+  },
+  "cc-agent-teams": {
+    "bytes": 44239,
+    "fetched": "2026-11-14",
+    "sha256": "287f52959e7553515b5b1b0fcfc0c8dd520bad8d5dac9823f5dfa80342693163",
+    "source": "https://code.claude.com/docs/en/agent-teams.md"
+  },
+  "cc-agents": {
+    "bytes": 9383,
+    "fetched": "2026-11-14",
+    "sha256": "de72ed10bf4598b409997457f9c8d3c8402751488eb1d5c897339ef0d51c1ea4",
+    "source": "https://code.claude.com/docs/en/agents.md"
+  },
+  "cc-best-practices": {
+    "bytes": 52451,
+    "fetched": "2026-11-14",
+    "sha256": "ee235042febdd1f76cf07228240140239638a3c464b6bc39bd3014830d02a9bf",
+    "source": "https://code.claude.com/docs/en/best-practices.md"
+  },
+  "cc-checkpointing": {
+    "bytes": 9361,
+    "fetched": "2026-11-14",
+    "sha256": "f0f66aca749347801ad55fec8ee669c162152458eaf1e5f11f56dfe05d21d0e6",
+    "source": "https://code.claude.com/docs/en/checkpointing.md"
+  },
+  "cc-claude-directory": {
+    "bytes": 32863,
+    "fetched": "2026-11-14",
+    "sha256": "8695f2011369407255620d9bedff96bafd63c945c96ed3136e4beeb5c3544506",
+    "source": "https://code.claude.com/docs/en/claude-directory.md"
+  },
+  "cc-code-mode": {
+    "bytes": 15659,
+    "fetched": "2026-11-14",
+    "sha256": "db0f69c56d5d5b33af676bca6c74e92828dc307fe67df119439fdfea0e75b807",
+    "source": "https://code.claude.com/docs/en/code-mode.md"
+  },
+  "cc-commands": {
+    "bytes": 57003,
+    "fetched": "2026-11-14",
+    "sha256": "f1d341295c6a88d9878a87ac317f1c5c88989c9ad30ecebe91536c779979fbc8",
+    "source": "https://code.claude.com/docs/en/commands.md"
+  },
+  "cc-common-workflows": {
+    "bytes": 18539,
+    "fetched": "2026-11-14",
+    "sha256": "16a0b3b401c36f1fac7ae43d2a00c99c636fde70fbf906703d5a637428ee909a",
+    "source": "https://code.claude.com/docs/en/common-workflows.md"
+  },
+  "cc-context-window": {
+    "bytes": 8801,
+    "fetched": "2026-11-14",
+    "sha256": "d3856dadd0356608b6a2da839a9da4554587ce588b2b3dda43e77152f5784989",
+    "source": "https://code.claude.com/docs/en/context-window.md"
+  },
+  "cc-costs": {
+    "bytes": 46805,
+    "fetched": "2026-11-14",
+    "sha256": "859c2c4bd0462e9fc904475095cf498cb3817ff12477d0122fb651b5e08a0218",
+    "source": "https://code.claude.com/docs/en/costs.md"
+  },
+  "cc-debug-your-config": {
+    "bytes": 18619,
+    "fetched": "2026-11-14",
+    "sha256": "39eccc7f88f52f10d32b66f05d49076f08d6302ab290c10431e902953d2748ae",
+    "source": "https://code.claude.com/docs/en/debug-your-config.md"
+  },
+  "cc-env-vars": {
+    "bytes": 192535,
+    "fetched": "2026-11-14",
+    "sha256": "d3954e57031b79781fd6e10da838e9933368b655258c13dd25284953d5700446",
+    "source": "https://code.claude.com/docs/en/env-vars.md"
+  },
+  "cc-fast-mode": {
+    "bytes": 24790,
+    "fetched": "2026-11-14",
+    "sha256": "d465037ac1c7ba585208daa2aa412f34e9369792e807c99989b486931d0728fd",
+    "source": "https://code.claude.com/docs/en/fast-mode.md"
+  },
+  "cc-features-overview": {
+    "bytes": 29597,
+    "fetched": "2026-11-14",
+    "sha256": "efc49e737525802ae8d69539111980817a9d2862f3be759a10e6f00a3ecfe4db",
+    "source": "https://code.claude.com/docs/en/features-overview.md"
+  },
+  "cc-goal": {
+    "bytes": 15812,
+    "fetched": "2026-11-14",
+    "sha256": "9f76fc8fc67771b934c70401dbb423ee25f2e52c8aa762871f9c7b0a81bd8739",
+    "source": "https://code.claude.com/docs/en/goal.md"
+  },
+  "cc-headless": {
+    "bytes": 38894,
+    "fetched": "2026-11-14",
+    "sha256": "0cc0e5123cdbb554c09d3b4e182e01ee352d763900d7a858b8b2852e5b55e3a4",
+    "source": "https://code.claude.com/docs/en/headless.md"
+  },
+  "cc-hooks": {
+    "bytes": 293539,
+    "fetched": "2026-11-14",
+    "sha256": "cf74269ef6d156ca0f965c042b09d57f7a3f4f23731c7bf5b435bb48b764af5e",
+    "source": "https://code.claude.com/docs/en/hooks.md"
+  },
+  "cc-hooks-guide": {
+    "bytes": 66890,
+    "fetched": "2026-11-14",
+    "sha256": "635c222faf54a3f58a8b8ee91c21cace31fa29f7f95d3d08e7dd0ab0f9f6520f",
+    "source": "https://code.claude.com/docs/en/hooks-guide.md"
+  },
+  "cc-how-claude-code-works": {
+    "bytes": 19943,
+    "fetched": "2026-11-14",
+    "sha256": "dc1462a59d183dcca09fa3ce178ce991ca7f96c6ce04f4b9c2316fc484ddd58c",
+    "source": "https://code.claude.com/docs/en/how-claude-code-works.md"
+  },
+  "cc-large-codebases": {
+    "bytes": 35612,
+    "fetched": "2026-11-14",
+    "sha256": "5764008ddd893fa5177b2e6239155b0a8796fd594c53e5071927ad748cc6790e",
+    "source": "https://code.claude.com/docs/en/large-codebases.md"
+  },
+  "cc-mcp": {
+    "bytes": 156983,
+    "fetched": "2026-11-14",
+    "sha256": "4df615e0fc0e0f632550c98eaaf973d16db8ab98cbaed13fea85512fd427d518",
+    "source": "https://code.claude.com/docs/en/mcp.md"
+  },
+  "cc-memory": {
+    "bytes": 55459,
+    "fetched": "2026-11-14",
+    "sha256": "524cff77043d4b230e427dfcebce29a5284fcd2e3f4678abb2ef9b6e856c5ff8",
+    "source": "https://code.claude.com/docs/en/memory.md"
+  },
+  "cc-model-config": {
+    "bytes": 135296,
+    "fetched": "2026-11-14",
+    "sha256": "3174ce7b7981da3d1c0296cd7ff13fe7cd5bf3c267e635f30bbd61509deaca6a",
+    "source": "https://code.claude.com/docs/en/model-config.md"
+  },
+  "cc-monitoring-usage": {
+    "bytes": 176608,
+    "fetched": "2026-11-14",
+    "sha256": "bcf7ba8147a9a8cf3261e383cc50151958576a72233d30716c94a39c3fe71cce",
+    "source": "https://code.claude.com/docs/en/monitoring-usage.md"
+  },
+  "cc-output-styles": {
+    "bytes": 17182,
+    "fetched": "2026-11-14",
+    "sha256": "74bc7dfd0e61dc4a2cd5ffaca349f40702b49c33f9fba7cb4334b1d623a1bda1",
+    "source": "https://code.claude.com/docs/en/output-styles.md"
+  },
+  "cc-permission-modes": {
+    "bytes": 120362,
+    "fetched": "2026-11-14",
+    "sha256": "e4b21e3717458e028a041a753580c398d5e577a55e8ce8133af1353ab85583f3",
+    "source": "https://code.claude.com/docs/en/permission-modes.md"
+  },
+  "cc-permissions": {
+    "bytes": 92764,
+    "fetched": "2026-11-14",
+    "sha256": "3f504ff0e98e70ae6711065d3644ab30b0469664bf2a6b69c7bd4f81875f138e",
+    "source": "https://code.claude.com/docs/en/permissions.md"
+  },
+  "cc-plugin-evals": {
+    "bytes": 63948,
+    "fetched": "2026-11-14",
+    "sha256": "4505c07df2227cb7dd608b5a3e82ec4a76c61e6904889c73326ac1a1d5bc84aa",
+    "source": "https://code.claude.com/docs/en/plugin-evals.md"
+  },
+  "cc-plugins-components": {
+    "bytes": 38246,
+    "fetched": "2026-11-14",
+    "sha256": "1ea4367112bf1ab73bd954ed6ee6bebb411d4a4dde3081f89bed44ba55a21a04",
+    "source": "https://code.claude.com/docs/en/plugins/components.md"
+  },
+  "cc-plugins-measure": {
+    "bytes": 13473,
+    "fetched": "2026-11-14",
+    "sha256": "1e0cf55fe11821a000881da313832b961ee7394ab5eea129d79647aa620a3ef9",
+    "source": "https://code.claude.com/docs/en/plugins/measure.md"
+  },
+  "cc-plugins-overview": {
+    "bytes": 14514,
+    "fetched": "2026-11-14",
+    "sha256": "e5b255a52965b71be9d9583bb9b6707f65ce1f214f6afa4f614e1a492787e599",
+    "source": "https://code.claude.com/docs/en/plugins/overview.md"
+  },
+  "cc-plugins-relevance": {
+    "bytes": 13334,
+    "fetched": "2026-11-14",
+    "sha256": "222a17e4589600bf9f8c0d55f4a3d93ddb3ecade10c6a7a7ab9835236b87ab09",
+    "source": "https://code.claude.com/docs/en/plugins/relevance.md"
+  },
+  "cc-prompt-caching": {
+    "bytes": 43992,
+    "fetched": "2026-11-14",
+    "sha256": "8bf3e27bcc4f70e5c5e783bf18b697eee375c34e9d29b0c6e39bbfddf81e80a4",
+    "source": "https://code.claude.com/docs/en/prompt-caching.md"
+  },
+  "cc-sandboxing": {
+    "bytes": 110894,
+    "fetched": "2026-11-14",
+    "sha256": "2df1b27e787a5c7919c328a565ee08e5cb34a706d0b89e1390f70c39a915e447",
+    "source": "https://code.claude.com/docs/en/sandboxing.md"
+  },
+  "cc-scheduled-tasks": {
+    "bytes": 20228,
+    "fetched": "2026-11-14",
+    "sha256": "ef9be1d49e12d3b25196cdf892b6982290677ac4ee86ae43393c7dd5803379ca",
+    "source": "https://code.claude.com/docs/en/scheduled-tasks.md"
+  },
+  "cc-sessions": {
+    "bytes": 35270,
+    "fetched": "2026-11-14",
+    "sha256": "05712119799a5f66d0e90aa4d284be42f3c48fb6e69b7bc5a34b20d8fc2b1a06",
+    "source": "https://code.claude.com/docs/en/sessions.md"
+  },
+  "cc-settings": {
+    "bytes": 45980,
+    "fetched": "2026-11-14",
+    "sha256": "bc72fdd5dc45fdf7ea3ce5d480628ce1fcb31aa09b6b796316f1db8ac02eb5e9",
+    "source": "https://code.claude.com/docs/en/settings.md"
+  },
+  "cc-settings-reference": {
+    "bytes": 457744,
+    "fetched": "2026-11-14",
+    "sha256": "1ccc167196c58088b5b5c2c0e873135cca73350331572f954910ead4e530a89b",
+    "source": "https://code.claude.com/docs/en/settings-reference.md"
+  },
+  "cc-skills": {
+    "bytes": 119798,
+    "fetched": "2026-11-14",
+    "sha256": "654fd3e23932c9a0e0f79f382a348a231ed8add3944c7ef3e3cec543589a6060",
+    "source": "https://code.claude.com/docs/en/skills.md"
+  },
+  "cc-statusline": {
+    "bytes": 62277,
+    "fetched": "2026-11-14",
+    "sha256": "604a14fea0f6c834d0bf6d472efcee7630f9b0cba1a34c5da90364c3c6d93904",
+    "source": "https://code.claude.com/docs/en/statusline.md"
+  },
+  "cc-sub-agents": {
+    "bytes": 116586,
+    "fetched": "2026-11-14",
+    "sha256": "00bda45456b22baae5d1a3f953f1d84b2fb8c191871d7e8753d13a24d9b74cf5",
+    "source": "https://code.claude.com/docs/en/sub-agents.md"
+  },
+  "cc-tools-reference": {
+    "bytes": 91496,
+    "fetched": "2026-11-14",
+    "sha256": "fe2d97e824c95da2dda7f2c47c3ebe35c063d952addacdb6cdc560ff30be9817",
+    "source": "https://code.claude.com/docs/en/tools-reference.md"
+  },
+  "cc-workflows": {
+    "bytes": 45412,
+    "fetched": "2026-11-14",
+    "sha256": "0854f460f06e03fd7edccc1cb277fd29b0535a10c03d2c5560fd449c0c7f4c52",
+    "source": "https://code.claude.com/docs/en/workflows.md"
+  },
+  "eng-building-effective-agents": {
+    "bytes": 18271,
+    "fetched": "2026-11-14",
+    "sha256": "718987e3f2055761f4f157a50829b4f61e55c84a773b8a7aa5f0c2e9223fc642",
+    "source": "https://www.anthropic.com/engineering/building-effective-agents"
+  },
+  "eng-built-multi-agent-research-system": {
+    "bytes": 25985,
+    "fetched": "2026-11-14",
+    "sha256": "427d1f0d0773ab929800472bf567fc588b3a157727642715f5cfa2154213073e",
+    "source": "https://www.anthropic.com/engineering/built-multi-agent-research-system"
+  },
+  "eng-claude-code-best-practices": {
+    "bytes": 52451,
+    "fetched": "2026-11-14",
+    "sha256": "ee235042febdd1f76cf07228240140239638a3c464b6bc39bd3014830d02a9bf",
+    "source": "https://www.anthropic.com/engineering/claude-code-best-practices"
+  },
+  "eng-code-execution-with-mcp": {
+    "bytes": 13903,
+    "fetched": "2026-11-14",
+    "sha256": "d2e762ea99075259200ba54100352777766e055a7b1e8cbc5905211b2d797dfb",
+    "source": "https://www.anthropic.com/engineering/code-execution-with-mcp"
+  },
+  "eng-effective-context-engineering-for-ai-agents": {
+    "bytes": 21139,
+    "fetched": "2026-11-14",
+    "sha256": "9757cec7b0bf53a5475e221844c263f07ab32f6dcd9ad4f876d096ae32e5d5cb",
+    "source": "https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents"
+  },
+  "eng-effective-harnesses-for-long-running-agents": {
+    "bytes": 13239,
+    "fetched": "2026-11-14",
+    "sha256": "eb29fa5b4baa62d8ab5d47960c11dc4bf41af866776bbb7f338a3ac615cc1496",
+    "source": "https://www.anthropic.com/engineering/effective-harnesses-for-long-running-agents"
+  },
+  "eng-equipping-agents-for-the-real-world-with-agent-skills": {
+    "bytes": 9362,
+    "fetched": "2026-11-14",
+    "sha256": "a4de77d30531f761a1b628eb2b213dcb7b2f267ff7b30e1d10d3b9517d1e2f46",
+    "source": "https://www.anthropic.com/engineering/equipping-agents-for-the-real-world-with-agent-skills"
+  },
+  "eng-writing-tools-for-agents": {
+    "bytes": 21743,
+    "fetched": "2026-11-14",
+    "sha256": "5a3aaf7e03d027e02dd775e4156c3807149fa17a40b4f6151fe75e5dd302b3eb",
+    "source": "https://www.anthropic.com/engineering/writing-tools-for-agents"
+  },
+  "pl-agent-skills-best-practices": {
+    "bytes": 42405,
+    "fetched": "2026-11-14",
+    "sha256": "cb3f49125d6716342b369145655ec8a129a2baeaff3dd56b3087758f9674bd54",
+    "source": "https://platform.claude.com/docs/en/agents-and-tools/agent-skills/best-practices.md"
+  },
+  "pl-agent-skills-overview": {
+    "bytes": 25554,
+    "fetched": "2026-11-14",
+    "sha256": "2828b43872578b136b274f63e45ab58d3b8f2926abf553a47b9ae6cf714ad2c1",
+    "source": "https://platform.claude.com/docs/en/agents-and-tools/agent-skills/overview.md"
+  },
+  "pl-build-with-claude-context-windows": {
+    "bytes": 16210,
+    "fetched": "2026-11-14",
+    "sha256": "aa289e55ec1ee55ec7c1fc3d609372707bd09e5fc4d5c0b11f5fd816ce7382cc",
+    "source": "https://platform.claude.com/docs/en/build-with-claude/context-windows.md"
+  },
+  "pl-build-with-claude-effort": {
+    "bytes": 42650,
+    "fetched": "2026-11-14",
+    "sha256": "ed97da9bd61afde31998c4f3e5885c620c6992b8e39fd10d01f1d81baf7efd9b",
+    "source": "https://platform.claude.com/docs/en/build-with-claude/effort.md"
+  },
+  "pl-fable-5-2-whats-new-fable-5-2": {
+    "bytes": 28836,
+    "fetched": "2026-11-14",
+    "sha256": "cebf978deb078d4ecd447c0e1fe690d6d78794b12b3a184f147e416bb3fa1ed5",
+    "source": "https://platform.claude.com/docs/en/models/fable-5-2/whats-new-fable-5-2.md"
+  },
+  "pl-haiku-5-5-whats-new-haiku-5-5": {
+    "bytes": 12027,
+    "fetched": "2026-11-14",
+    "sha256": "191496380d56ee22ef44187985209757b19caea79959f0c3a363873c5859b3e0",
+    "source": "https://platform.claude.com/docs/en/models/haiku-5-5/whats-new-haiku-5-5.md"
+  },
+  "pl-models-choosing-a-model": {
+    "bytes": 8860,
+    "fetched": "2026-11-14",
+    "sha256": "327ea712e3dfba5d74c1611a8c76160777cb6b294fa90ba8b5d424b4bd458237",
+    "source": "https://platform.claude.com/docs/en/about-claude/models/choosing-a-model.md"
+  },
+  "pl-models-optimizing-for-cost-and-intelligence": {
+    "bytes": 216935,
+    "fetched": "2026-11-14",
+    "sha256": "2bbe5d72ff4f04ba54d92f532edbf279a314e0c09487a62045efa4ed2ef0f691",
+    "source": "https://platform.claude.com/docs/en/about-claude/models/optimizing-for-cost-and-intelligence.md"
+  },
+  "pl-models-overview": {
+    "bytes": 29196,
+    "fetched": "2026-11-14",
+    "sha256": "d5d0ec8acea9cde0b2a218c7ab4224e6be514b8a04fc995c0e08d784ded3da8e",
+    "source": "https://platform.claude.com/docs/en/about-claude/models/overview.md"
+  },
+  "pl-opus-5-5-whats-new-opus-5-5": {
+    "bytes": 23068,
+    "fetched": "2026-11-14",
+    "sha256": "0ec648d12a5abf1df9d3bd121ef20b0320f9599b3410e84248d371c0fcf5eac8",
+    "source": "https://platform.claude.com/docs/en/models/opus-5-5/whats-new-opus-5-5.md"
+  },
+  "pl-prompt-engineering-claude-prompting-best-practices": {
+    "bytes": 81543,
+    "fetched": "2026-11-14",
+    "sha256": "1b45ffbca510d5ce394b6bb4e92f87d68473aef57fadb573006b18cd2bb2f556",
+    "source": "https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/claude-prompting-best-practices.md"
+  },
+  "pl-prompt-engineering-overview": {
+    "bytes": 2814,
+    "fetched": "2026-11-14",
+    "sha256": "0dcdf2155778c9ace8ab0f2db4a9515c0a0df9b04ee32f82108cd93a6b42e318",
+    "source": "https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/overview.md"
+  },
+  "pl-prompt-engineering-prompting-claude-fable-5-2": {
+    "bytes": 29560,
+    "fetched": "2026-11-14",
+    "sha256": "c20db12661c1cea8594aaf29a20dc2ad460437200f6ffbbbf8d3086b9c724c5d",
+    "source": "https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/prompting-claude-fable-5-2.md"
+  },
+  "pl-prompt-engineering-prompting-claude-haiku-5-5": {
+    "bytes": 15332,
+    "fetched": "2026-11-14",
+    "sha256": "f0e4031394a042f18ba37bc13db18d8ae506f5703ee0b58d2834613d4a2d4753",
+    "source": "https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/prompting-claude-haiku-5-5.md"
+  },
+  "pl-prompt-engineering-prompting-claude-opus-5-5": {
+    "bytes": 28990,
+    "fetched": "2026-11-14",
+    "sha256": "6171e5c0ada4178cf93c40470f7371df9e7380e8b6514b9fb34e183c914c784a",
+    "source": "https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/prompting-claude-opus-5-5.md"
+  },
+  "pl-prompt-engineering-prompting-claude-sonnet-5-5": {
+    "bytes": 28012,
+    "fetched": "2026-11-14",
+    "sha256": "c3197181ae54c77e0333cb6965b916cdb27a23efcf2469d25fae93f0ff3d65e0",
+    "source": "https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/prompting-claude-sonnet-5-5.md"
+  },
+  "pl-sonnet-5-5-whats-new-sonnet-5-5": {
+    "bytes": 23991,
+    "fetched": "2026-11-14",
+    "sha256": "b5438bded2c7f53f1c11b2067224a9ee5e28f715b8fe12487134cc778ae08163",
+    "source": "https://platform.claude.com/docs/en/models/sonnet-5-5/whats-new-sonnet-5-5.md"
+  },
+  "pl-test-and-evaluate-develop-tests": {
+    "bytes": 153058,
+    "fetched": "2026-11-14",
+    "sha256": "f66a681003fd9df053f0a72f1fd00684d82e55f37509fcbf0f5f5115d746a97f",
+    "source": "https://platform.claude.com/docs/en/test-and-evaluate/develop-tests.md"
+  },
+  "pl-tool-use-define-tools": {
+    "bytes": 41395,
+    "fetched": "2026-11-14",
+    "sha256": "5449d207b270f80802465c73167c866e834e28745b77faf2b0c6c920bf384230",
+    "source": "https://platform.claude.com/docs/en/agents-and-tools/tool-use/define-tools.md"
+  }
+}

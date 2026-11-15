@@ -8,44 +8,24 @@ on:
 
 jobs:
   ci:
-    name: Lint, test, and self-audit
-    runs-on: ubuntu-latest
+    name: Tests
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 10
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Python 3.12
+      - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
 
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install pyyaml pytest anthropic
-
-      - name: Model currency guard
-        run: python scripts/check_model_currency.py
-
-      - name: Rule schema + orchestrator + detector unit tests
-        run: python -m pytest tests/ -v -p no:langsmith_plugin
-
-      - name: 15-fixture eval suite
-        run: python scripts/run_eval_suite.py
-
-      - name: Calibration telemetry (precision/recall/F1)
-        run: python tests/calibration.py
-
-      - name: Strange-loop self-audit
-        run: python scripts/run.py SKILL.md --target opus-4-7 --mode audit
-
-      - name: Upload artifacts
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: audit-results
-          path: |
-            evals/results/
-            evals/SELF-AUDIT.md
+      # Measurement, gate behavior and knowledge-base structure. Quote checking
+      # against live documentation needs the snapshots, which are not committed;
+      # maintainers run scripts/kb_gate.py locally (see references/maintaining.md).
+      - name: Unit tests
+        run: python -m unittest discover tests -v

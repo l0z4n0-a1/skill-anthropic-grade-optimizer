@@ -1,173 +1,131 @@
 # anthropic-grade-optimizer
 
 [![CI](https://github.com/l0z4n0-a1/skill-anthropic-grade-optimizer/actions/workflows/ci.yml/badge.svg)](https://github.com/l0z4n0-a1/skill-anthropic-grade-optimizer/actions/workflows/ci.yml)
-[![Self-audit](https://img.shields.io/badge/self--audit-98%2F100-brightgreen)](evals/SELF-AUDIT.md)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
-[![Version](https://img.shields.io/badge/version-1.0.0-blue)](CHANGELOG.md)
 
-> **Cite or stay silent. Artifact type comes first. Voice drift trumps score.**
-> An auditor for Claude-directing artifacts against 189 cited Anthropic rules across 11 dimensions, calibrated per model. Every finding ships with verbatim quote and source URL. Authorial voice is preserved by contract — not by accident.
+A Claude Code skill that reviews a Claude Code setup as a system: what loads,
+what it costs, what gets used, whether each piece is the right kind of piece,
+and whether each is well made for its job. Findings cite Anthropic's
+documentation with a verbatim quote, and changes are measured before and after.
 
-## Why this exists
+It is an independent project and is not affiliated with Anthropic.
 
-Most prompt linters score what's *easy to count* and call it a day. This one starts from a different premise: **a Claude-directing artifact is a cognitive contract, not a configuration file.** Audit it like a contract — cite the clause, name the violation, propose the patch, and never rewrite the author into someone else. If the auditor cannot point to the doctrine, the auditor stays silent.
+## What it adds to what Claude Code already has
 
-That is the line this skill refuses to cross, and the reason it audits itself on every release.
+Claude Code ships good checks, and this skill uses them instead of repeating
+them:
 
-## The Three Laws
+| Built in | Covers |
+|---|---|
+| `/doctor` | Installation health, invalid settings, unused extensions, derivable CLAUDE.md content |
+| `/doctor prompt-audit` | Instruction text written for older models, stale references, files that contradict each other |
+| `/usage` | Recent usage attributed to skills, subagents, plugins and MCP servers |
+| `/context all` | What is in the context window right now |
 
-Every finding, every diff, every score lives under these three rules. Violating any one collapses the others.
+Those look at one thing at a time. This skill looks at how the pieces work
+together and whether each is good at what it is for:
 
-1. **Cite or stay silent.** Every 🔴 / 🟡 finding carries a `source_url` and a verbatim quote. No source → no finding.
-2. **Artifact type comes first.** A SKILL.md rule fired against a CLAUDE.md is a false positive, not a finding. The rubric is type-aware before it is severity-aware.
-3. **Voice drift trumps score.** An optimization that lifts the score by diluting the operator's voice is a regression in disguise. Drift over 10% aborts; with `--push-ceiling` the gate tightens to 5%.
+- **Placement.** A rule that must always hold is written as prose when it should
+  be a hook; a monthly procedure sits in the file every session loads; the model
+  does by reasoning what a script would do exactly.
+- **Economy.** What every session pays in fixed context, set beside what was
+  actually used in the last 30 days.
+- **Routing.** Whether the model can tell your skills and subagents apart from
+  their descriptions.
+- **Allocation.** Whether each role runs on a model and effort level that suits
+  its work.
+- **Fitness.** Whether a skill or subagent would produce good work, not only
+  whether its frontmatter is valid.
+- **Model fit.** What to change, remove and add when the model reading the setup
+  changes.
 
-## What it does
+## How it works
 
-Reads any Claude-directing artifact — `CLAUDE.md`, `SKILL.md`, subagent, hook, MCP config, system prompt, user prompt, workflow, or `api_config` — and emits:
+Three parts, each doing what it is good at.
 
-- a 0–100 score with letter grade
-- per-dimension breakdown across the 11 dimensions (D-CLAR, D-STRUCT, D-EXAMPLE, D-REASON, D-CONTEXT, D-MODEL, D-AGENT, D-EVAL, D-TOOL, D-VISION, D-CC for the Claude Code ecosystem)
-- triaged findings (🔴 must-fix, 🟡 should-fix, 🟢 may-fix, ❓ open question, ⚪ preserve)
-- surgical diffs (mode ≠ audit), each citing the rule that triggered them
-- voice-fidelity gate (drift > 10% aborts optimization)
-- declared-exception ledger with side-by-side raw/active scores
+```
+scripts/measure.py     counts: pieces, load timing, context cost, 30-day usage
+kb/claims/*.jsonl      remembers: 822 statements from Anthropic's docs, each
+                       with a verbatim quote, source and read date
+SKILL.md + references  judges: the model reads the setup with the measurement
+                       and the relevant claims, and reports findings
+```
+
+Scripts do everything that can be counted, so no number in a report is a guess.
+The knowledge base holds what a model could get wrong from memory: how the
+harness behaves, what each current model needs, what Anthropic recommends and
+why. Judgment is left to the model, because whether a subagent's brief is good
+enough is not something a rule list can settle.
+
+Every claim's quote is checked against a snapshot of its source by
+`scripts/kb_gate.py`. A claim whose quote is not found is rejected, which is
+also how the knowledge base finds its own stale entries after the documentation
+changes.
 
 ## Install
 
-**As a Claude Code skill (recommended):**
+```bash
+git clone https://github.com/l0z4n0-a1/skill-anthropic-grade-optimizer.git ~/.claude/skills/anthropic-grade-optimizer
+```
+
+Python 3.9 or later, standard library only. Then, in Claude Code:
+
+```
+review my Claude Code setup
+```
+
+or name the skill: `/anthropic-grade-optimizer`. You can also ask for one piece
+("review this subagent") or a migration ("fit my setup to Opus 5.5").
+
+## The measurement on its own
 
 ```bash
-git clone https://github.com/l0z4n0-a1/skill-anthropic-grade-optimizer.git \
-  ~/.claude/skills/anthropic-grade-optimizer
-cd ~/.claude/skills/anthropic-grade-optimizer
-pip install pyyaml                 # required
-pip install anthropic              # optional, only for --pass2
+python scripts/measure.py --project . --out before.json
+# ... change things, work for a while ...
+python scripts/measure.py --project . --compare before.json
 ```
 
-The skill auto-loads in any Claude Code session. Trigger it by asking Claude
-to "audit this CLAUDE.md", "make this skill Anthropic-grade", "is this
-prompt good for Opus 4.7?", etc.
+It reads local files only and makes no network call. From settings it keeps key
+names and hook definitions, never the values of environment entries. From
+session history it keeps counts and token totals, never text. Token figures for
+files are character counts divided by four and are labelled as estimates. What
+it cannot see (the built-in system prompt, MCP tool definitions, sessions from
+other machines) is listed in its output under `not_measured`.
 
-**As a standalone CLI** (no Claude Code required):
+## Knowledge base
 
 ```bash
-git clone https://github.com/l0z4n0-a1/skill-anthropic-grade-optimizer.git
-cd anthropic-grade-optimizer
-pip install pyyaml
-python scripts/run.py path/to/SKILL.md --target opus-4-7 --mode audit
+python scripts/kb.py topics                      # what is covered
+python scripts/kb.py show hooks,settings         # claims for a review
+python scripts/kb.py model claude-opus-5-5       # everything tied to one model
+python scripts/kb.py cite hooks-030              # full record with quote and source
 ```
 
-**Requirements:** Python 3.10+. `pyyaml` is the only mandatory dependency.
-The `anthropic` SDK is only needed for the `--pass2` qualitative-judge mode
-and degrades gracefully when absent.
+Sources are Anthropic's Claude Code documentation, the Claude platform
+documentation, the reference files of the `claude-api` skill bundled with Claude
+Code, and Anthropic engineering posts: 77 sources, last read 2026-11-14. The
+documentation itself is not redistributed; the repository holds short quotes,
+links and content hashes.
 
-## Quick start
+Updating for a new model or a Claude Code release is a four-step loop described
+in [references/maintaining.md](references/maintaining.md).
 
-```bash
-python scripts/run.py <artifact_path> --target opus-4-7 --mode audit
-```
+## Limits
 
-With Pass-2 qualitative audit (requires `ANTHROPIC_API_KEY`):
+- The review is a model's judgment, informed by measurement and cited claims. It
+  can be wrong, and each finding says how sure it is and how to check it.
+- Usage figures come from this machine's session history and cover only the
+  retention window Claude Code keeps.
+- The knowledge base is as current as its last fetch. A model released after
+  that date is not covered until the loop is run.
 
-```bash
-python scripts/run.py <artifact_path> --target opus-4-7 --pass2
-```
+## Version 1
 
-Strict mode (no operator-declared exceptions):
-
-```bash
-python scripts/run.py <artifact_path> --target opus-4-7 --no-exceptions
-```
-
-Generate diffs and write to a sibling `<artifact>.optimized.<ext>`:
-
-```bash
-python scripts/run.py <artifact_path> --target opus-4-7 --mode optimize --apply
-```
-
-## How it's verified
-
-| Layer | What it covers | Run |
-|---|---|---|
-| **Strange-loop self-audit** | Skill audits its own SKILL.md every release | `python scripts/run.py SKILL.md --target opus-4-7` |
-| **Eval suite** | 15 fixtures across good / bad / adversarial / cross-bad | `python scripts/run_eval_suite.py` |
-| **Unit tests** | Rule-schema integrity (one test per rule_id), detector output shape, orchestrator contract | `python -m pytest tests/ -p no:langsmith_plugin` |
-| **Calibration** | Precision / recall / F1 vs ground truth | `python tests/calibration.py` |
-| **Model currency** | CI fails when modulation-matrix drifts from known-current models | `python scripts/check_model_currency.py` |
-| **CI** | All of the above on every PR | [`.github/workflows/ci.yml`](.github/workflows/ci.yml) |
-
-## Honest scope
-
-- **What it does:** audits *prompts and Claude-directing artifacts* against published Anthropic doctrine.
-- **What it does not:** evaluate Claude's *responses* (use eval pipelines), or audit application code that consumes the API beyond the prompts themselves.
-- **Doctrine limits:** see [`references/gaps.md`](references/gaps.md) for declared coverage gaps. Anthropic doctrine is prescriptive, not diagnostic; the 11-dimension rubric is auditor-canonical, not Anthropic-canonical.
-
-Coverage that cannot be cited is held back, not invented. Silent gaps are worse than declared ones — so we declare them.
-
-## A note on the skill's own name
-
-The skill is named `anthropic-grade-optimizer` even though Anthropic's own
-SKILL guidance reserves the word `anthropic` in skill names. This is a
-**declared exception** registered in
-[`scripts/run.py § DECLARED_EXCEPTIONS`](scripts/run.py): the name is the
-most precise descriptor of the skill's purpose, the rule continues to fire
-on every self-audit, and the orchestrator always shows both `active` (with
-the exception) and `raw` (`--no-exceptions`) scores side by side. Voice
-fidelity over hidden adjustment — see [`evals/SELF-AUDIT.md`](evals/SELF-AUDIT.md).
-
-## Architecture
-
-```
-SKILL.md                     ← canonical entry point
-scripts/
-  run.py                     ← orchestrator: classify → pass1 → [pass2] → score → emit
-  classify_artifact.py       ← detect type + signals
-  pass1_mechanical.py        ← regex / code-check / heuristic detectors
-  pass2_executor.py          ← Claude API qualitative judge with prompt caching
-  score_calculator.py        ← per-dimension aggregation + voice-drift estimate
-  optimize.py                ← surgical diffs + snippet patches
-  check_model_currency.py    ← CI guard against modulation-matrix drift
-  run_eval_suite.py          ← replay 15 ground-truth fixtures
-references/
-  rules-anthropic.yaml       ← 189 rules with verbatim_quote + source_url (SSOT)
-  rules-master.yaml          ← dimension index
-  modulation-matrix.yaml     ← 4 model profiles
-  rubric-by-type.yaml        ← rule subsets per artifact type
-  pass2-protocol.md          ← qualitative audit protocol
-  gaps.md                    ← declared doctrinal limits + 5 resolved conflicts
-  anti-patterns.md           ← AP-1..15
-  heuristics.md              ← H1..12
-  quotes-canonical.md        ← citation library
-assets/snippets/             ← 18 verbatim canonical insertions for high-leverage rules
-tests/
-  test_rule_schema.py        ← one test per rule_id
-  test_pass1_detectors.py    ← detector output well-formedness per fixture
-  test_orchestrator.py       ← bundle contract, alias compat, exception toggle
-  calibration.py             ← precision / recall / F1 vs ground truth
-evals/
-  fixtures/                  ← 15 ground-truth inputs
-  ground-truth.yaml          ← expected scores + grades
-  SELF-AUDIT.md              ← committed strange-loop result
-  results/                   ← auto-generated EVAL_MATRIX.md, CALIBRATION_REPORT.md
-```
-
-## Contributing
-
-See [CONTRIBUTING.md](CONTRIBUTING.md). The short version: every new finding
-needs a verbatim Anthropic quote with source URL, and every new rule must
-include a fixture and a unit test.
-
-## Security
-
-See [SECURITY.md](SECURITY.md) for vulnerability reporting.
+Version 1 was a rule engine that scored single artifacts against 189 cited
+rules. Claude Code now ships `/doctor prompt-audit` for line-level review, so
+version 2 moved to the system-level questions it does not ask. Version 1 remains
+available at the `v1.0.0` tag.
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
-
----
-
-*Shipped under the discipline it audits. The strange-loop closes cleanly: this skill audits itself with the same pipeline it audits everything else, and the result is committed at [`evals/SELF-AUDIT.md`](evals/SELF-AUDIT.md) on every release.*
-
-> *Identity before architecture. Coherence before completeness. Form demonstrates content.*
+MIT. See [LICENSE](LICENSE).
