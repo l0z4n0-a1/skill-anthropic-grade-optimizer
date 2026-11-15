@@ -1,0 +1,14 @@
+{
+  "name": "l0z4n0-a1-skills",
+  "owner": {
+    "name": "l0z4n0-a1"
+  },
+  "description": "Claude Code skills by l0z4n0-a1.",
+  "plugins": [
+    {
+      "name": "grade-optimizer",
+      "source": "./",
+      "description": "Reviews a Claude Code setup as a system, or one skill, subagent, hook or instruction file in depth."
+    }
+  ]
+}

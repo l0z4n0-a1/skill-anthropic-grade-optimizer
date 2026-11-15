@@ -80,6 +80,15 @@ review my Claude Code setup
 or name the skill: `/anthropic-grade-optimizer`. You can also ask for one piece
 ("review this subagent") or a migration ("fit my setup to Opus 5.5").
 
+### Install as a plugin
+
+```
+/plugin marketplace add l0z4n0-a1/skill-anthropic-grade-optimizer
+/plugin install grade-optimizer@l0z4n0-a1-skills
+```
+
+The repository is also a one-plugin marketplace, so this installs the same skill through Claude Code's plugin system.
+
 ## The measurement on its own
 
 ```bash
