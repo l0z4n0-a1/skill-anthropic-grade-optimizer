@@ -19,6 +19,11 @@ together, and whether each is good at its job.
   snapshot; after a fetch, this is also how stale claims are found.
 - `scripts/kb_fetch.py` and `scripts/kb.py`: fetch sources by content hash, and
   select claims by topic and model for a review.
+- `kb/core.json`: for each of ten review questions, the dozen claims to read
+  first and the principle they support. `kb/harness.json`: the numbers the
+  measurement depends on, each tied to the claim that documents it.
+- `evals/`: a setup with ten planted defects and a clean one, with an answer
+  key, for checking how many defects a review finds and how many it invents.
 - `references/setup-review.md`, `piece-review.md`, `model-fit.md`,
   `maintaining.md`, and `kb/EXTRACTION.md`.
 - Tests for measurement, the gate's failure cases and knowledge-base structure.

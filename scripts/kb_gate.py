@@ -14,6 +14,7 @@ quote the source as written, or pick a span without markup.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import pathlib
 import re
@@ -28,6 +29,7 @@ REQUIRED = ("id", "topic", "kind", "applies_to", "claim", "why", "check", "quote
 MAX_QUOTE = 400
 MIN_QUOTE = 25
 MIN_WORD_CHARS = 18
+SCOPE = re.compile(r"^(all|claude-code|claude-[a-z]+-\d+(-\d+)?)$")
 _TRANS = str.maketrans({"‘": "'", "’": "'", "“": '"', "”": '"',
                         "–": "-", "—": "-", " ": " ", "‑": "-"})
 
@@ -50,6 +52,9 @@ def main() -> int:
     seen: dict[str, str] = {}
     errors: list[str] = []
     missing_snap: set[str] = set()
+    stale_snap: set[str] = set()
+    lock_file = KB / "snapshots.lock.json"
+    lock = json.loads(lock_file.read_text(encoding="utf-8")) if lock_file.exists() else {}
     report = {}
 
     for path in files:
@@ -75,8 +80,8 @@ def main() -> int:
             if c["topic"] not in TOPICS or c["kind"] not in KINDS:
                 errors.append(f"{where} {cid} bad topic/kind: {c['topic']}/{c['kind']}")
                 continue
-            if not isinstance(c["applies_to"], list):
-                errors.append(f"{where} {cid} applies_to must be a list")
+            if not isinstance(c["applies_to"], list) or not all(isinstance(s, str) and SCOPE.match(s) for s in c["applies_to"]):
+                errors.append(f"{where} {cid} applies_to must list 'all', 'claude-code' or model ids such as claude-opus-5-5")
                 continue
             if c["source"] not in sources:
                 errors.append(f"{where} {cid} unknown source {c['source']}")
@@ -92,12 +97,19 @@ def main() -> int:
                 if not snap.exists():
                     missing_snap.add(c["source"])
                     continue
+                locked = lock.get(c["source"], {}).get("sha256")
+                if locked and hashlib.sha256(snap.read_bytes()).hexdigest() != locked:
+                    stale_snap.add(c["source"])
                 snaps[c["source"]] = norm(snap.read_text(encoding="utf-8", errors="replace"))
             if norm(c["quote"]) not in snaps[c["source"]]:
                 errors.append(f"{where} {cid} quote not in {c['source']}: {c['quote'][:70]!r}")
                 continue
             ok += 1
         report[path.name] = ok
+        if ok == 0 and not any(path.name in e for e in errors) and not missing_snap:
+            errors.append(f"{path.name} holds no claims")
+    for sid in sorted(stale_snap):
+        errors.append(f"snapshot {sid} differs from snapshots.lock.json; fetch again so the lock records what was checked")
 
     if not errors and not missing_snap and sum(report.values()) == 0:
         errors.append("no claims were checked; an empty knowledge base is not a pass")

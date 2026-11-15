@@ -176,7 +176,7 @@ class HardeningTest(unittest.TestCase):
         use = self.doc["usage"]
         self.assertEqual(use["tokens_by_scope_and_model"]["main | claude-opus-5-5"]["requests"], 1)
         self.assertEqual(use["avg_prompt_tokens_per_request"], {"main": 1000, "subagent": 1})
-        self.assertTrue(any("not valid JSON" in u for u in self.doc["unreadable"]))
+        self.assertTrue(any("could not be read" in u for u in self.doc["unreadable"]))
 
     def test_wrong_shaped_json_is_reported_not_fatal(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -191,7 +191,7 @@ class HardeningTest(unittest.TestCase):
             write(home / "projects" / "p" / "s.jsonl", json.dumps(row) + "\n")
             doc = measure.build(home, project, 30)
             self.assertEqual(doc["usage"]["agent_spawns"], {"(unspecified)": 1})
-            self.assertEqual(doc["usage"]["typed_agent_share_of_spawns"], 0.0)
+            self.assertEqual(doc["usage"]["share_of_spawns_to_agents_defined_here"], 0.0)
             self.assertTrue(any("expected a JSON object" in u for u in doc["unreadable"]))
 
     def test_agents_md_is_not_fixed_context_when_claude_md_exists(self):
@@ -203,7 +203,81 @@ class HardeningTest(unittest.TestCase):
             doc = measure.build(home, project, 0)
             agents_md = next(f for f in doc["instruction_files"] if f["path"].endswith("AGENTS.md") and f["path"].startswith(tmp))
             self.assertEqual(agents_md["loads"], "only if no CLAUDE.md is found")
-            self.assertLess(doc["fixed_context_est_tokens"]["instruction_files"], 1000)
+            # an AGENTS.md that a CLAUDE.md imports does load
+            write(project / "CLAUDE.md", "see @AGENTS.md")
+            doc = measure.build(home, project, 0)
+            agents_md = next(f for f in doc["instruction_files"] if f["path"].endswith("AGENTS.md") and f["path"].startswith(tmp))
+            self.assertEqual(agents_md["loads"], "session start")
+
+    def test_frontmatter_never_copies_a_block_under_an_unknown_key(self):
+        shapes = ['"mcpServers":', "mcpServers :", "# a comment", "servers.mcp:", "'hooks':", "mcpServers:"]
+        for shape in shapes:
+            text = f"---\nname: x\ndescription: fine\n{shape}\n  vault:\n    env:\n      API_KEY: SECRETQ\n---\nbody\n"
+            meta, other, _ = measure.frontmatter(text)
+            self.assertNotIn("SECRETQ", json.dumps([meta, other]), shape)
+            self.assertEqual(meta["description"], "fine", shape)
+
+    def test_settings_copy_only_allowlisted_values(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home, project = pathlib.Path(tmp) / ".claude", pathlib.Path(tmp) / "proj"
+            write(home / "settings.json", json.dumps({
+                "permissions": {"defaultMode": "plan", "additionalDirectories": "LEAK1", "allow": ["a", "b"]},
+                "modelSettings": {"claude-opus-5-5": {"effortLevel": "high", "apiKeyHelper": "LEAK2"}},
+                "hooks": {"PreToolUse": [{"matcher": "Bash", "hooks": [
+                    {"type": "command", "command": "python ~/.claude/hooks/g.py", "token": "LEAK3", "onFailure": "block"}]}]}}))
+            write(home / "hooks" / "g.py", "")
+            write(project / "x", "")
+            doc = measure.build(home, project, 0)
+            dumped = json.dumps(doc)
+            for leak in ("LEAK1", "LEAK2", "LEAK3"):
+                self.assertNotIn(leak, dumped)
+            files, hook = doc["settings"]["files"][0], doc["settings"]["hooks"][0]
+            self.assertEqual(files["permissions"], {"defaultMode": "plan", "additionalDirectories": "(str)", "allow": 2})
+            self.assertEqual(files["values"]["modelSettings"], {"claude-opus-5-5": {"effortLevel": "high"}})
+            self.assertEqual((hook["options"], hook["other_options"]), ({"onFailure": "block"}, ["token"]))
+            # `~` in a hook command means the directory that holds the audited --home, not the auditor's own
+            self.assertEqual(hook["scripts_missing"], [])
+
+    def test_hook_script_paths_resolve_the_documented_forms(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home, project = pathlib.Path(tmp) / ".claude", pathlib.Path(tmp) / "proj"
+            write(project / ".claude" / "hooks" / "fmt.sh", "")
+            write(home / "x", "")
+            ok = ['"$CLAUDE_PROJECT_DIR"/.claude/hooks/fmt.sh', "${CLAUDE_PROJECT_DIR}/.claude/hooks/fmt.sh", "./.claude/hooks/fmt.sh"]
+            for command in ok:
+                self.assertEqual(measure.missing_scripts(command, home, project), [], command)
+            self.assertEqual(len(measure.missing_scripts("node ./.claude/hooks/gone.cjs", home, project)), 1)
+            self.assertEqual(measure.missing_scripts("$OTHER_DIR/hooks/fmt.sh", home, project), [])  # unknown, not missing
+
+    def test_session_rows_are_counted_once_and_odd_values_do_not_crash(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home, project = pathlib.Path(tmp) / ".claude", pathlib.Path(tmp) / "proj"
+            write(project / "x", "")
+            now = dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+            typed = {"type": "user", "uuid": "u1", "sessionId": "s", "timestamp": now,
+                     "message": {"role": "user", "content": "<command-name>/go</command-name>"}}
+            odd = {"type": "assistant", "uuid": "u2", "sessionId": "s", "timestamp": now, "message": {
+                "id": "m", "model": {"not": "a string"}, "usage": {"output_tokens": "12", "input_tokens": 5}, "content": []}}
+            no_time = {"type": "user", "uuid": "u3", "message": {"role": "user", "content": "<command-name>/late</command-name>"}}
+            for name in ("a.jsonl", "b.jsonl"):  # a resumed session repeats its rows in a second file
+                write(home / "projects" / "p" / name, "\n".join(json.dumps(r) for r in (typed, odd, no_time)) + "\n")
+            use = measure.build(home, project, 30)["usage"]
+            self.assertEqual(use["typed_commands"], {"go": 1})
+            self.assertEqual(use["sessions"]["main"], 1)
+            self.assertEqual(use["tokens_total"]["output"], 0)  # a string is not a token count
+            self.assertEqual(use["tokens_total"]["input"], 5)
+            self.assertIn("main | (unreadable name)", use["tokens_by_scope_and_model"])
+
+    def test_one_piece_can_be_measured_without_a_setup(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            skill = write(pathlib.Path(tmp) / "s" / "SKILL.md", "---\nname: s\ndescription: Does one thing well\n---\nbody\n")
+            write(skill.parent / "references" / "more.md", "x" * 400)
+            write(skill.parent / "references" / "z.md", "x" * 40)
+            write(skill.parent / "README.md", "not something the skill's reader is sent to")
+            record = measure.piece(skill.parent)
+            self.assertEqual(record["bundled"], {"references": {"files": 2, "est_tokens": 110}})
+            self.assertEqual((record["name"], record["always_est_tokens"]), ("s", measure.est_tokens(len("Does one thing well"))))
+            self.assertNotIn("README.md", json.dumps(record["bundled"]))
 
 
 class GateTest(unittest.TestCase):
@@ -274,6 +348,20 @@ class GateTest(unittest.TestCase):
 
 
 class RepositoryKnowledgeBaseTest(unittest.TestCase):
+    def test_harness_numbers_are_backed_by_their_claims(self):
+        """A number the script depends on must still be stated by the claim it cites."""
+        claims = {}
+        for path in (ROOT / "kb" / "claims").glob("*.jsonl"):
+            for line in path.read_text(encoding="utf-8").splitlines():
+                claim = json.loads(line)
+                claims[claim["id"]] = claim
+        harness = json.loads((ROOT / "kb" / "harness.json").read_text(encoding="utf-8"))
+        for name, entry in harness.items():
+            if name.startswith("_"):
+                continue
+            self.assertIn(entry["claim"], claims, name)
+            self.assertIn(entry["stated_as"], claims[entry["claim"]]["quote"], name)
+
     def test_every_claim_has_a_unique_id_and_a_known_source(self):
         """Structure only, so it runs without the uncommitted snapshots; quotes are checked by kb_gate.py."""
         sources = {s["id"] for s in json.loads((ROOT / "kb" / "sources.json").read_text(encoding="utf-8"))}
@@ -286,6 +374,20 @@ class RepositoryKnowledgeBaseTest(unittest.TestCase):
                 self.assertIn(claim["source"], sources)
                 self.assertIn(claim["topic"], kb_gate.TOPICS)
         self.assertGreater(len(seen), 100)
+
+    def test_core_questions_name_real_general_claims(self):
+        claims = {}
+        for path in (ROOT / "kb" / "claims").glob("*.jsonl"):
+            for line in path.read_text(encoding="utf-8").splitlines():
+                claim = json.loads(line)
+                claims[claim["id"]] = claim
+        core = json.loads((ROOT / "kb" / "core.json").read_text(encoding="utf-8"))
+        for question, entry in core.items():
+            self.assertTrue(entry["principle"].strip(), question)
+            self.assertLessEqual(len(entry["claims"]), 14, question)
+            for cid in entry["claims"]:
+                self.assertIn(cid, claims, question)
+                self.assertTrue(set(claims[cid]["applies_to"]) & {"all", "claude-code"}, f"{question}: {cid} is tied to a model")
 
     def test_query_script_selects_by_topic_and_model(self):
         out = subprocess.run([sys.executable, str(ROOT / "scripts" / "kb.py"), "show", "model", "--model", "claude-opus-5-5"],

@@ -7,8 +7,9 @@ Out: kb/snapshots/<id>.md  (raw text, never committed) and kb/snapshots.lock.jso
      can tell which sources changed.
 Fails: exit 1 if any source could not be read; the lock keeps the previous entry.
 
-Usage: kb_fetch.py [--only ID[,ID...]] [--list URL]
-  --list URL   print the URL's body to stdout (used to discover index pages).
+Usage: kb_fetch.py [--only ID[,ID...]] [--bundled-dir DIR] [--list URL]
+  --bundled-dir DIR  where the claude-api skill bundled with Claude Code is, for sources marked `bundled`.
+  --list URL         print the URL's body to stdout (used to discover index pages).
 Stdlib only. Sends a generic User-Agent and nothing about the machine or user.
 """
 from __future__ import annotations

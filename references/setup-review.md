@@ -1,175 +1,169 @@
 # Reviewing a whole setup
 
 A setup is a system. Its pieces compete for the same context window, route work
-to each other, and enforce or fail to enforce the same rules. Most of what makes a
-setup weak lives between pieces, which is why this review looks at the whole
-before any part. The five questions below go from the ones that usually change
-the most to the ones that change the least. Take them in that order and spend
-your effort where the measurement points; a setup rarely has serious problems
-under all five.
+to each other, and enforce or fail to enforce the same rules. Most of what makes
+a setup weak lives between pieces, which is why this review looks at the whole
+before any part.
 
-Before each question, read the claims for it. The command is given with each;
-start with `--brief` and expand what matters, as SKILL.md describes. Add
-`--model <id>` to include what is specific to a model. A setup is usually read by
-more than one: use the model that served most main-session requests in the
-measurement for the instruction file and the skills, and each subagent's own
-model for that subagent. When the configured model and the one that actually ran
-differ, that difference is itself worth raising.
+## How to think while doing it
 
-## 1. Is each thing in the right kind of piece?
+These habits separate a review that finds the cause from one that lists
+symptoms.
 
-`python scripts/kb.py show harness,hooks,settings`
+**Work out what the setup is for before judging it.** The usage block shows
+which skills and agents carry the work and which models serve it. A setup built
+for one person's research is judged differently from one shared by a team that
+ships code, and the same piece can be dead weight in one and essential in the
+other.
 
-Claude Code offers several places to put knowledge and rules, and they differ in
-one way that decides most placement questions: whether what they hold is
-guaranteed or merely likely. A hook or a permission rule runs as code, so what it
-enforces always happens. An instruction in CLAUDE.md, a rule file, a skill or a
-subagent prompt is text the model reads and weighs, so it is followed most of the
-time and not all of it. Neither is better. Guarantees are rigid and cannot judge;
-instructions adapt and can be missed.
+**Follow one important rule end to end.** Pick the rule whose failure would
+cost the most and trace it: where is it written, what enforces it, and does that
+enforcement actually stop the action? Defects that look small in isolation
+often combine. A rule stated only in prose and a hook that reports an error
+without blocking are two minor findings separately and one serious finding
+together, because between them the rule is enforced nowhere.
 
-So for each rule and each recurring procedure in the setup, ask what kind of
-thing it is.
+**Look for the cause behind several symptoms.** When three things look wrong,
+ask whether one thing produces all three. Reporting the cause once is worth more
+than reporting its effects three times, and it points at the change that fixes
+them together.
 
-A rule that must hold every time, where one miss is costly (never push to main,
-never write outside the project, always run the formatter), belongs in a hook or
-a permission rule. Written as prose it will eventually be missed, and the usual
-response, repeating it in capitals, makes the surrounding instructions worse
-without making this one reliable. Read the hook claims before recommending one:
-which exit code blocks, which events can block at all, and what happens when a
-hook times out are easy to get wrong, and a hook that cannot fail is not a gate.
-Check the setup's existing hooks against the same claims, using the hook
-definitions in the measurement (event, matcher, timeout, options) and reading
-the hook scripts themselves. Weigh each hook with the permission mode beside it:
-the less the mode asks the person, the more a hook that fails open matters.
+**Try to break your explanation before reporting it.** When you form a
+hypothesis about why a number looks the way it does, ask what you would see if
+it were false, and go look when the evidence is at hand: the settings values and
+the usage figures are already in the measurement. Report an explanation as
+confirmed only if you checked it, and as a hypothesis otherwise.
 
-A step that needs no judgment and repeats (counting, renaming, converting,
-collecting the same facts each session) belongs in a script the model calls, not
-in instructions the model carries out by hand each time. The model doing by
-reasoning what code does exactly is slower, costs tokens on every run, and
-occasionally gets it wrong.
+**Ask what would change if the piece were gone.** If the honest answer is
+nothing, the piece is cost. If you cannot tell, that is a question for the
+person, not a finding.
 
-A fact or convention that matters in most sessions belongs in the instruction
-file. One that matters only for some files belongs in a path-scoped rule. A
-procedure or body of knowledge that matters for some tasks belongs in a skill,
-where only its description costs context until it is needed. Work that is heavy
-on reading and whose detail the main session does not need belongs in a
-subagent, which spends its own context and returns a summary.
+**Price each recommendation.** Every change gives something up: a hook that
+blocks when it fails also stops work when it fails; a skill removed for disuse
+is missing the one time it was needed. State the cost with the change, so the
+person is choosing and not just obeying.
 
-The findings here are mismatches: a guarantee written as prose, a judgment call
-frozen into a hook, a once-a-month procedure sitting in the file every session
-loads, a deterministic chore done by the model, a hook that exits with a code
-that does not block.
+**Mind the window.** The measurement covers thirty days in which the setup
+itself may have changed. A pattern from before a recent change is a reason to
+measure again later.
 
-## 2. What does every session pay, and what does it buy?
+## The five questions
 
-`python scripts/kb.py show context,cost`
+They go from the ones that usually change the most to the ones that change the
+least. Spend effort where the measurement points; a setup rarely has serious
+problems under all five. Before each, read its core claims with the command
+given. A setup is usually read by more than one model: use the one that served
+most main-session requests for the instruction file and the skills, and each
+subagent's own model for that subagent. When the configured model and the one
+that actually ran differ, raise it.
 
-The measurement gives the fixed cost of the person's own files at session start
-(`fixed_context_est_tokens`) and, beside it, what was used in the window
-(`skill_invocations`, `typed_commands`, `agent_spawns`,
-`never_invoked_in_window`). Read them together. A piece that loads every session
-and was never used in thirty days is paying rent for nothing, and the fix is
-usually cheap: remove it, disable it, or stop the model from loading it on its
-own so it costs nothing until someone types its name.
+### 1. Is each thing in the right kind of piece?
 
-Treat "never invoked" as a question to raise with the person, not a verdict. The
-window may miss seasonal work, and the count sees only this machine. For plugin
-skills, the remedy is the plugin's own enable switch.
+`kb.py core placement`, then `kb.py core hooks` if the setup has hooks or needs one.
 
-Then look past the fixed cost, because it is rarely the largest. The usage block
-shows where tokens actually went: `avg_prompt_tokens_per_request` says how large
-the working context runs in the main session and in subagents,
-`tool_result_chars` says which tools fill it, and the split between main session
-and subagents says who is doing the work. Set the average beside the compaction
-window in the settings values: an average close to the window means sessions
-spend most of their life near the ceiling. A setup whose requests average far above its fixed cost has a
-conversation-growth problem, and trimming instruction files will not touch it;
-the levers are clearing between tasks, sending bulky output to files, and moving
-heavy reading into subagents. Say which lever fits the numbers you see. The cost
-claims give Anthropic's order for the levers; follow it instead of leading with
-whichever is most visible.
+The places Claude Code offers differ in one way that decides most placement
+questions: whether what they hold is guaranteed or merely likely. A hook or a
+permission rule runs as code, so what it enforces always happens. An instruction
+in an instruction file, a skill or a subagent prompt is text the model reads and
+weighs, so it is followed most of the time. Neither is better. Guarantees are
+rigid and cannot judge; instructions adapt and can be missed.
 
-For MCP servers, the script knows only that they exist. Ask for `/context all`
-when the setup has several, since their tool definitions can be a large part of
-the window and only that command shows it.
+So for each rule and each recurring procedure, ask what kind of thing it is. A
+rule that must hold every time, where one miss is costly, belongs in a hook or a
+permission rule; written as prose it will eventually be missed, and repeating it
+in capitals degrades the surrounding instructions without making this one
+reliable. A step that needs no judgment and repeats belongs in a script the
+model calls. A fact that matters in most sessions belongs in the instruction
+file; one that matters only for some files, in a path-scoped rule; a procedure
+that matters for some tasks, in a skill; work that is heavy on reading and whose
+detail the main session does not need, in a subagent.
 
-## 3. Can the model find the right piece?
+Check existing hooks against the hook claims, using the definitions in the
+measurement (event, matcher, timeout, options) and reading the hook scripts.
+Which exit code blocks, which events can block at all, and what happens when a
+hook fails or times out are easy to get wrong, and a hook that cannot fail is
+not a gate. Weigh each hook with the permission mode beside it: the less the
+mode asks the person, the more a hook that fails open matters.
 
-`python scripts/kb.py show skills,subagents --grep description`
+### 2. What does every session pay, and what does it buy?
 
-Skills and subagents are chosen by the model from their descriptions. That makes
-a description routing text, read alongside every other description, and it
-succeeds when it lets the model tell this piece from its neighbours. The
-measurement lists pairs whose descriptions share vocabulary
-(`description_overlaps`). That list is a place to start reading, not a result:
-shared words do not mean confusion, and two pieces with no words in common can
-still claim the same request.
+`kb.py core economy`
+
+Read the fixed cost of the person's own files (`fixed_context_est_tokens`)
+beside what was used (`skill_invocations`, `typed_commands`, `agent_spawns`,
+`never_invoked_in_window`). A piece that loads every session and was never used
+is a candidate to remove, disable, or make invocable by name only, so it costs
+nothing until someone asks for it. Treat "never invoked" as a question for the
+person: the window may miss seasonal work and sees only this machine.
+
+Then look past the fixed cost, because it is rarely the largest.
+`avg_prompt_tokens_per_request` says how large the working context runs,
+`tool_result_chars` says which tools fill it, and the main and subagent split
+says who does the work. Set the average beside the compaction window in the
+settings values: an average close to the window means sessions spend most of
+their life near the ceiling. When requests average far above the fixed cost, the
+problem is conversation growth and trimming instruction files will not touch it.
+The core claims give Anthropic's order for the cost levers; follow it instead of
+leading with whichever is most visible.
+
+For MCP servers the script knows only that they exist. Ask for `/context` output
+when the setup has several.
+
+### 3. Can the model find the right piece?
+
+`kb.py core routing`
+
+Skills and subagents are chosen from their descriptions, read alongside every
+other description. One succeeds when it lets the model tell this piece from its
+neighbours. `description_overlaps` lists pairs that share vocabulary; it is a
+place to start reading, since shared words do not prove confusion and two pieces
+with no words in common can still claim the same request.
 
 Read the descriptions as a set. For each, ask what request it should win and
-whether another piece would also plausibly claim that request. Look for pieces
-that say what they are but not when to use them, pieces whose boundary with a
-sibling is stated in neither, descriptions cut off by the listing limit (the
-measurement flags `listing_truncated`), and pieces that grew a list of trigger
-phrases one missed request at a time. Where two pieces genuinely overlap, the
-fix may be merging them, or giving each a sentence that names the other and says
-which case goes where.
+whether another piece would also claim it. Look for pieces that say what they
+are but not when to use them, pieces whose boundary with a sibling is stated in
+neither, descriptions cut by the listing limit (`listing_truncated`), and lists
+of trigger phrases grown one missed request at a time. Usage is evidence too:
+when one of two similar pieces takes all the invocations, the other is either
+redundant or losing requests it was built for.
 
-Usage is evidence here too. When a general-purpose agent is spawned far more
-often than the specialised ones (`typed_agent_share_of_spawns`), either the
-specialists' descriptions are not winning the work they were built for, or the
-roster has a gap where the general agent is filling in. Which one it is takes
-reading the agent definitions. Remember that spawn counts cover every project on
-the machine and that the setup may have changed inside the window, so a pattern
-that predates a recent change is a reason to measure again later, not a finding.
+### 4. Is each role on the right model and effort?
 
-## 4. Is each role on the right model and effort?
+`kb.py core allocation`, then `kb.py model <id> --brief` for each model in use.
 
-`python scripts/kb.py show model --model <id>` and `python scripts/kb.py model <id>`
+Compare what each subagent declares with what ran
+(`requests_by_model_and_effort`, `tokens_by_scope_and_model`). Effort names do
+not mean the same thing from one model to the next and defaults differ, so an
+agent that leaves effort unset, or a model unset, is making a choice the person
+may not know about. Look for roles whose work does not match their tier in
+either direction.
 
-The measurement shows the model and effort each subagent declares and, in
-`requests_by_model_and_effort` and `tokens_by_scope_and_model`, what actually
-ran. Compare the two with the claims on what each model is recommended for and
-how its effort levels behave. Effort names do not mean the same thing from one
-model to the next, and defaults differ between models and between the API and
-Claude Code, so an agent that leaves effort unset is making a choice the person
-may not know about.
+Anthropic's documentation says how model and effort are chosen and inherited,
+and what each current model is recommended for. It does not give a general rule
+for matching a tier to a kind of work, so a recommendation here is your
+judgment: label it so, and frame it as something to try with a quality check
+that would show it held.
 
-Look for roles whose work does not match their tier in either direction:
-mechanical work on the most capable model, or work that needs judgment on the
-smallest one. Look for agents with no model set, which run on whatever the main
-session uses and so change tier whenever the person switches model. And where
-the setup spreads work across several models to save money, weigh that against
-what the claims say about running one capable model at lower effort, since a
-cascade gives up cache reuse between models.
+### 5. Is each piece well made for what it does?
 
-Recommend a change of model or effort as something to try and measure, with the
-quality check that would show it held. These are the recommendations most likely
-to be wrong for a particular workload, and the person's own results outrank the
-general guidance.
-
-## 5. Is each piece well made for what it does?
-
-Now read individual pieces, using `references/piece-review.md`. Do not read all
-of them. Choose by leverage: the instruction file every session loads, the
-skills and agents the usage block shows carrying the most work, and anything the
-earlier questions flagged. A flaw in an agent that ran three hundred times
-matters more than a flaw in one that ran twice.
-
-For instruction text that may simply be dated, written for an older model or
-contradicted by the repository, recommend `/doctor prompt-audit`, which is built
-for exactly that and reads every file. Spend your own reading on what it does
-not judge: whether the piece is good at its job.
+Read individual pieces with `references/piece-review.md`, chosen by leverage:
+the instruction file every session loads, the skills and agents that carry the
+most work, and anything the earlier questions flagged. For text that may simply
+be dated, recommend `/doctor prompt-audit`, and spend your own reading on
+whether the piece is good at its job.
 
 ## Reporting
 
 Lead with what you found, in two or three sentences a person could act on
-without reading further: the largest problems and roughly what fixing them is
-worth. Then the measured picture in a few lines, then the findings in order of
-effect, each in the shape SKILL.md describes. Close with what you did not look
-at and what the measurement could not see, so the person knows the edges of the
-review.
+without reading further. Then the measured picture in a few lines, then the
+findings in order of effect, in the shape SKILL.md describes. Say what you chose
+not to change and why, since a review that names what is sound is easier to
+trust. Close with what you did not look at and what the measurement could not
+see.
 
 Suggest keeping the measurement JSON. After changes, a second run with
-`--compare` shows what moved, and usage figures are comparable once enough
-sessions have passed that the two windows do not overlap.
+`--compare` shows what moved; usage figures are comparable once the two windows
+no longer overlap. `kb.py core verifying` holds what the documentation says
+about telling whether a change helped. It covers evaluations in general and
+does not describe measuring a whole setup, so present before-and-after
+measurement as this skill's method.

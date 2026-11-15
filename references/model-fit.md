@@ -17,15 +17,15 @@ request and the measurement which model is the target and which pieces it reads,
 and state that at the top of what you report. Review a piece that pins a model
 against that model, not the target.
 
-Check that the knowledge base covers the target:
-`python scripts/kb.py models`. If the model is missing, the knowledge base
+Check that the knowledge base covers the target: `kb.py models`. If the model is missing, the knowledge base
 predates it. Say so, read the model's prompting guide and what's-new page from
 the current documentation for this review, and point the person to
 `references/maintaining.md`.
 
 ## What to read
 
-`python scripts/kb.py model <target id>` prints every claim tied to the target:
+`kb.py model <target id> --brief` lists every claim tied to the target, and
+`kb.py cite <ids>` expands the ones you act on. They cover
 what it does by default, how its effort levels behave, which older instructions
 its documentation says to re-test or remove, and which new instructions it
 recommends, often with suggested wording. If the person is coming from a

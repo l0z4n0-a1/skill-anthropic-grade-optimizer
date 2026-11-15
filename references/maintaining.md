@@ -45,8 +45,23 @@ step that needs judgment; several extractors can run in parallel on different
 sources as long as each is given its own id range. Then run the gate again. A
 claim is in the knowledge base only once the gate passes.
 
+**After the loop.** Three small files depend on the claims, and the tests say
+when one has fallen behind:
+
+- `kb/core.json` names the dozen claims that form the first read for each
+  review question, with a one-sentence principle those claims support. When
+  extraction adds a claim that states a principle better, or removes one the
+  core names, revise the entry. Keep each core short; its purpose is to be
+  cheap to read.
+- `kb/harness.json` holds the numbers `measure.py` depends on, each with the
+  claim that documents it. When the gate flags one of those claims, correct the
+  number there.
+- `evals/` builds a setup with planted defects and a clean one. After a change
+  to the guides or a new model, run the review against both as
+  `evals/README.md` describes, and compare with the last recorded result.
+
 Finish with `python -m unittest discover tests` and commit the claims, the lock
-file and `sources.json` together.
+file, `sources.json` and any of the three files above together.
 
 ## Why it is built this way
 
@@ -61,5 +76,6 @@ Claims carry the model ids their source names, so guidance for one generation
 does not leak into reviews for another, and retiring a model is deleting the
 claims tied only to it.
 
-Nothing about a specific model is written into `SKILL.md` or the review guides.
-If you find yourself adding a model name there, it belongs in a claim.
+Nothing about a specific model, and no number about Claude Code, is written
+into `SKILL.md` or the review guides. If you find yourself adding one there, it
+belongs in a claim.

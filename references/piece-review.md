@@ -16,16 +16,23 @@ If you cannot state the purpose after reading the piece, that is the first
 finding, and probably the most important one, because a model reading it will
 not be able to either.
 
-Then read the claims for the kind of piece, with the model that reads it:
+If the piece is not installed in a setup, `measure.py --piece <path>` gives its
+listing cost, body size and bundled files on its own.
 
-| Piece | Command |
-|---|---|
-| Skill, command, output style | `python scripts/kb.py show skills,prompting --model <id>` |
-| Subagent | `python scripts/kb.py show subagents,orchestration,prompting --model <id>` |
-| CLAUDE.md, rule file | `python scripts/kb.py show harness,context,prompting --model <id>` |
-| Hook, permission rule, settings | `python scripts/kb.py show hooks,settings` |
-| MCP server, tool definition | `python scripts/kb.py show mcp,tools` |
-| Plugin | `python scripts/kb.py show plugins,skills` |
+Then read the core claims for the kind of piece, and `kb.py core prompting` for
+any piece that is mostly instruction text:
+
+| Piece | First read | When a finding needs more |
+|---|---|---|
+| Skill, command, output style | `kb.py core skill` | `kb.py show skills --brief --grep <text>` |
+| Subagent | `kb.py core subagent` | `kb.py show subagents,orchestration --brief --grep <text>` |
+| CLAUDE.md, rule file | `kb.py core instructions` | `kb.py show harness,context --brief --grep <text>` |
+| Hook, permission rule, settings | `kb.py core hooks` | `kb.py show hooks,settings --brief --grep <text>` |
+| MCP server, tool definition | `kb.py show mcp,tools --brief` | |
+| Plugin | `kb.py core skill` | `kb.py show plugins --brief` |
+
+Add `kb.py model <id> --brief` for the model that reads the piece; `--model`
+on `show` accepts several ids separated by commas when more than one does.
 
 The reader's model matters. A subagent that pins a model is read by that model;
 one that does not is read by whatever the main session runs. Instructions that
@@ -34,10 +41,11 @@ particular reader.
 
 ## What to look at, in order
 
-**The configuration, against the documented fields.** Claude Code ignores a
-frontmatter field it does not recognise and says nothing, so a misspelled or
-invented field is a setting the author believes is active and is not. Compare
-every field with the claims. Check too what each real field does, since several
+**The configuration, against the documented fields.** The core claims say how
+Claude Code treats a frontmatter field it does not recognise, which makes a
+misspelled or invented field a setting the author believes is active and is
+not. The measurement lists these under `other_fields`. Compare every field with
+the claims. Check too what each real field does, since several
 do less or other than their names suggest, and what the piece gets by leaving a
 field out: a default is still a choice, and for tools, model and effort the
 default may be far from what the author intended.
@@ -82,9 +90,8 @@ reader would and ask where it would go wrong.
 - Are its examples doing what the author thinks? Models imitate examples closely,
   so one example becomes a template.
 - Does everything in it still fit the current reader? For text that looks
-  written for an older model, the documented patterns are in
-  `python scripts/kb.py show prompting`, and `/doctor prompt-audit` checks them
-  file by file.
+  written for an older model, `/doctor prompt-audit` checks the documented
+  patterns file by file.
 
 **Structure, for how the piece is loaded.** What sits at the top matters more
 than what sits at the bottom, for reasons the claims make specific (what is kept

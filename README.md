@@ -85,9 +85,11 @@ python scripts/measure.py --project . --out before.json
 python scripts/measure.py --project . --compare before.json
 ```
 
-It reads local files only and makes no network call. From settings it keeps key
-names and hook definitions, never the values of environment entries. From
-session history it keeps counts and token totals, never text. Token figures for
+It reads local files only and makes no network call. It copies values only from
+fixed lists of fields that are configuration (named frontmatter fields, named
+settings, named hook options) and records everything else by name or count.
+Hook commands are copied as written. From session history it keeps counts, token
+totals and the names of models, tools, skills and agents, never message text. Token figures for
 files are character counts divided by four and are labelled as estimates. What
 it cannot see (the built-in system prompt, MCP tool definitions, sessions from
 other machines) is listed in its output under `not_measured`.
@@ -95,8 +97,9 @@ other machines) is listed in its output under `not_measured`.
 ## Knowledge base
 
 ```bash
-python scripts/kb.py topics                      # what is covered
-python scripts/kb.py show hooks,settings         # claims for a review
+python scripts/kb.py core                        # the ten review questions and the principle behind each
+python scripts/kb.py core placement              # the dozen claims to read first for one question
+python scripts/kb.py show hooks,settings --brief # everything on a topic, one line per claim
 python scripts/kb.py model claude-opus-5-5       # everything tied to one model
 python scripts/kb.py cite hooks-030              # full record with quote and source
 ```
@@ -109,6 +112,14 @@ links and content hashes.
 
 Updating for a new model or a Claude Code release is a four-step loop described
 in [references/maintaining.md](references/maintaining.md).
+
+## Calibration
+
+`evals/` builds two throwaway setups: one with ten planted defects and an answer
+key, one with nothing wrong that matters. Running the review against both gives
+the two numbers that decide whether a reviewer can be trusted: how many real
+defects it finds and how many it invents. Results by model are recorded in
+[evals/README.md](evals/README.md).
 
 ## Limits
 

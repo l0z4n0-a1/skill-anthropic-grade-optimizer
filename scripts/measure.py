@@ -1,29 +1,32 @@
 #!/usr/bin/env python3
 """Measure a Claude Code setup: what exists, when each piece loads, what it costs, how it is used.
 
-This is the deterministic half of the audit. It counts and lists; it does not judge.
-Everything it reports is either read from disk or computed from local session
-history, and each estimate is labelled as one.
+This is the deterministic half of the review. It counts and lists; it does not judge.
+Everything it reports is read from disk or computed from local session history,
+and each estimate is labelled as one.
 
-In:  --home     the user-level Claude Code directory (default ~/.claude)
+In:  --home     the user-level Claude Code directory (default: $CLAUDE_CONFIG_DIR, else ~/.claude)
      --project  a project directory (default: current directory)
      --days     how far back to read session history (default 30; 0 skips it)
      --out      where to write the full JSON (default: stdout summary only)
      --compare  an earlier JSON written with --out; also prints what changed since
+     --piece    measure one skill or subagent file on its own, installed or not
 Out: a JSON document (see `build()`), and a short text summary on stdout.
 Fails: exit 2 if --home does not exist. A file that cannot be read or parsed is
        listed under `unreadable` and its content is left out of the figures.
 
 Scope: pieces are those of the user level, the given project and enabled plugins.
 Usage covers every project on this machine, because user-level pieces serve all
-of them; an agent defined in another project shows up in usage without a
-definition here, and is listed under `spawned_without_definition_here`.
+of them; an agent with no definition here (built in, or defined in another
+project) is listed under `spawned_without_definition_here`. What the script
+does not read is listed in the output under `not_measured`.
 
-Privacy: reads local files only and makes no network call. From settings it keeps
-key names, hook definitions, counts and a fixed list of non-secret values, never
-`env` values or MCP server arguments. From frontmatter it keeps a fixed list of
-fields and only the names of any others. From session history it keeps counts and
-token totals, never text.
+Privacy: reads local files only and makes no network call. It copies values only
+from fixed lists of fields that are configuration, not credentials: named
+frontmatter fields, named settings, named hook options. Everything else is
+recorded by name or by count. Hook commands are copied as written, so a secret
+typed into a hook command appears in the output. From session history it keeps
+counts, token totals, and the names of models, tools, skills and agents.
 
 Stdlib only. Python 3.9+.
 """
@@ -38,23 +41,23 @@ import pathlib
 import re
 import sys
 
-CHARS_PER_TOKEN = 4  # rough, for English prose; every figure derived from it is an estimate
-LISTING_CAP = 1536   # description + when_to_use are truncated to this in the skill listing
-IMPORT_DEPTH = 4     # CLAUDE.md imports are followed to this many hops
-# Frontmatter fields whose values are configuration, safe to copy. Anything else
-# (an inline `mcpServers` or `hooks` block can hold credentials) is recorded by name only.
+CHARS_PER_TOKEN = 4  # an estimating convention, not a fact about Claude Code; every figure from it is labelled an estimate
+# Facts about Claude Code live in kb/harness.json, each tied to the claim that documents it.
+_HARNESS = json.loads((pathlib.Path(__file__).resolve().parent.parent / "kb" / "harness.json").read_text(encoding="utf-8"))
+LISTING_CAP = _HARNESS["skill_listing_cap_chars"]["value"]
+IMPORT_DEPTH = _HARNESS["instruction_import_max_hops"]["value"]
+LONG_FILE_LINES = _HARNESS["instruction_file_recommended_max_lines"]["value"]
+
+# Allowlists. A value is copied only when its key is named here; any other key is recorded by name.
 SAFE_FIELDS = {"name", "description", "when_to_use", "model", "effort", "tools", "disallowedTools", "allowed-tools",
                "disable-model-invocation", "user-invocable", "context", "agent", "paths", "permissionMode", "maxTurns",
                "skills", "memory", "background", "isolation", "color", "argument-hint", "version", "license"}
-# Settings whose values the review needs and that cannot hold a secret.
-SAFE_SETTINGS = ("model", "outputStyle", "effortLevel", "autoCompactWindow", "modelSettings", "cleanupPeriodDays",
-                 "disableBundledSkills", "alwaysThinkingEnabled", "autoMemoryEnabled", "includeCoAuthoredBy")
-GENERIC_AGENTS = {"general-purpose", "general", "claude", "fork", "(unspecified)"}
-BUILT_IN_AGENTS = {"Explore", "Plan", "claude-code-guide", "statusline-setup"}
-STOP = set("this that with from when what which will your have into only also used uses using than then them they "
-           "their there here such each must should would could about after before where while other more most "
-           "does done make made need needs want wants user users claude skill skills agent agents para como "
-           "quando isso essa esse este esta mais pelo pela uma umas seus suas".split())
+SAFE_SETTINGS = {"model", "outputStyle", "effortLevel", "autoCompactWindow", "cleanupPeriodDays",
+                 "disableBundledSkills", "alwaysThinkingEnabled", "autoMemoryEnabled"}
+SAFE_HOOK_OPTIONS = {"onFailure", "async", "once", "continueOnBlock"}
+SCRIPT_EXT = r"(?:py|sh|js|mjs|cjs|ts|ps1|cmd|bat|rb|pl)"
+MAX_VALUE = 2000  # longest frontmatter value kept
+NAME_RE = re.compile(r"^[\w .:@/+-]{1,80}$")
 
 
 def est_tokens(chars: int) -> int:
@@ -69,11 +72,25 @@ def as_list(value) -> list:
     return value if isinstance(value, list) else []
 
 
+def num(value) -> int:
+    return value if isinstance(value, int) and not isinstance(value, bool) else 0
+
+
+def clean_name(value) -> str:
+    """A model, tool, skill or agent name from session history, or a placeholder when it is not name-shaped."""
+    text = value if isinstance(value, str) else ""
+    return text if NAME_RE.match(text) else "(unreadable name)"
+
+
+def scalar(value):
+    return value if isinstance(value, (str, int, float, bool)) and len(str(value)) <= 200 else f"({type(value).__name__})"
+
+
 def read(path: pathlib.Path, unreadable: list) -> str:
     try:
         return path.read_text(encoding="utf-8-sig", errors="replace")
     except OSError as exc:
-        unreadable.append(f"{path}: {exc}")
+        unreadable.append(f"{path}: {type(exc).__name__}")
         return ""
 
 
@@ -83,8 +100,8 @@ def read_json(path: pathlib.Path, unreadable: list) -> dict:
         return {}
     try:
         data = json.loads(path.read_text(encoding="utf-8-sig"))
-    except (OSError, ValueError) as exc:
-        unreadable.append(f"{path}: {exc}")
+    except (OSError, ValueError, RecursionError) as exc:
+        unreadable.append(f"{path}: {type(exc).__name__}")
         return {}
     if not isinstance(data, dict):
         unreadable.append(f"{path}: expected a JSON object, found {type(data).__name__}")
@@ -93,10 +110,12 @@ def read_json(path: pathlib.Path, unreadable: list) -> dict:
 
 
 def frontmatter(text: str):
-    """Reads top-level `key: value` pairs. Returns (safe fields, names of other fields, body).
+    """Reads the frontmatter block. Returns (safe fields, names of other fields, body).
 
-    Indented lines belong to the key above them. For a safe field they are joined
-    into its value (a YAML list becomes "a, b"); for any other field they are dropped.
+    The rule is structural: a line that starts in the first column begins a new
+    top-level entry, whatever it looks like; an indented line belongs to the entry
+    above it. Values are kept only for entries whose key is in SAFE_FIELDS, so a
+    block under any other key (quoted, commented, oddly spaced) is never copied.
     """
     if not text.startswith("---"):
         return {}, [], text
@@ -105,21 +124,26 @@ def frontmatter(text: str):
         return {}, [], text
     data, other, key = {}, [], None
     for line in text[3:end].splitlines():
-        m = re.match(r"^([A-Za-z0-9_-]+):\s*(.*)$", line)
-        if m:
-            key, val = m.group(1), m.group(2).strip()
-            if key in SAFE_FIELDS:
+        if not line.strip():
+            continue
+        if not line[0].isspace():
+            m = re.match(r"^([A-Za-z0-9_-]+):(?:\s+(.*))?$", line)
+            if m and m.group(1) in SAFE_FIELDS:
+                key, val = m.group(1), (m.group(2) or "").strip()
                 data[key] = "" if val in (">", "|", ">-", "|-") else val.strip("\"'")
             else:
-                other.append(key)
-        elif key in SAFE_FIELDS and line.strip():
+                key = None
+                label = re.match(r"^[\"']?([A-Za-z0-9_.-]+)", line)
+                if label and not line.startswith("#"):
+                    other.append(label.group(1))
+        elif key:
             item = line.strip()
             if item.startswith("- "):
                 item = item[2:].strip().strip("\"'")
                 data[key] = f"{data[key]}, {item}" if data[key] else item
             else:
                 data[key] = (data[key] + " " + item).strip()
-    return data, other, text[end + 4:]
+    return {k: v[:MAX_VALUE] for k, v in data.items()}, other, text[end + 4:]
 
 
 # ---------------------------------------------------------------- pieces on disk
@@ -127,8 +151,9 @@ def frontmatter(text: str):
 def instruction_files(home: pathlib.Path, project: pathlib.Path, unreadable: list) -> list:
     """Instruction files that load at session start, with the files they import.
 
-    AGENTS.md is listed separately as `loads: "only if no CLAUDE.md is found"`, since
-    by default Claude Code reads it only in that case.
+    An AGENTS.md found on its own beside a CLAUDE.md is listed with
+    `loads: "only if no CLAUDE.md is found"`, since by default Claude Code reads it
+    only in that case. One that a CLAUDE.md imports loads with that file.
     """
     roots = [(home / "CLAUDE.md", "user")]
     for d in reversed([project, *project.parents]):
@@ -136,6 +161,7 @@ def instruction_files(home: pathlib.Path, project: pathlib.Path, unreadable: lis
             p = d / name
             if p != home / "CLAUDE.md":
                 roots.append((p, "project" if d == project else "ancestor"))
+    roots.sort(key=lambda r: r[0].name == "AGENTS.md")  # imports of AGENTS.md are met before the bare file
     out, seen = [], set()
     has_claude_md = any(p.is_file() and p.name != "AGENTS.md" and scope != "user" for p, scope in roots)
 
@@ -148,14 +174,14 @@ def instruction_files(home: pathlib.Path, project: pathlib.Path, unreadable: lis
             return
         seen.add(key)
         text = read(path, unreadable)
-        fallback = path.name == "AGENTS.md" and has_claude_md
+        fallback = path.name == "AGENTS.md" and has_claude_md and not via
         out.append({"path": str(path), "scope": scope, "imported_by": via, "chars": len(text),
                     "lines": text.count("\n") + 1, "est_tokens": est_tokens(len(text)),
                     "loads": "only if no CLAUDE.md is found" if fallback else "session start"})
         if depth >= IMPORT_DEPTH or fallback:
             return
         body = re.sub(r"```.*?```", "", text, flags=re.S)
-        for ref in re.findall(r"(?<![\w`@])@((?:~|\.{1,2})?[\w./\\-]+\.(?:md|txt|ya?ml|json))", body):
+        for ref in re.findall(r"(?<![\w`@])@((?:~|\.{1,2})?[\w./\\-]*[\w-]\.[A-Za-z0-9]{1,8})(?![\w/])", body):
             target = pathlib.Path(os.path.expanduser(ref))
             if not target.is_absolute():
                 target = path.parent / target
@@ -191,42 +217,48 @@ def scopes(home: pathlib.Path, project: pathlib.Path, settings: list, unreadable
         if key not in enabled:
             continue
         for entry in as_list(entries) or [entries]:
-            path = pathlib.Path(str(as_dict(entry).get("installPath", "")))
-            if as_dict(entry).get("installPath") and path.is_dir():
-                found.append((f"plugin:{key.split('@')[0]}", path))
+            where = as_dict(entry).get("installPath")
+            if isinstance(where, str) and where and pathlib.Path(where).is_dir():
+                found.append((f"plugin:{key.split('@')[0]}", pathlib.Path(where)))
     return found
+
+
+def skill_record(skill: pathlib.Path, label: str, overrides: dict, unreadable: list) -> dict:
+    meta, other, body = frontmatter(read(skill, unreadable))
+    name = meta.get("name") or skill.parent.name
+    listing = (meta.get("description", "") + " " + meta.get("when_to_use", "")).strip()
+    # skillOverrides applies to user and project skills; plugin skills are managed through /plugin.
+    state = "on" if label.startswith("plugin:") else str(overrides.get(name, "on"))
+    if meta.get("disable-model-invocation", "").lower() == "true" and state == "on":
+        state = "user-invocable-only"
+    listed = {"on": min(len(listing), LISTING_CAP), "name-only": len(name)}.get(state, 0)
+    bundled = [p for p in skill.parent.rglob("*") if p.is_file() and p != skill]
+    return {"name": name, "scope": label, "path": str(skill), "frontmatter": meta, "other_fields": other,
+            "visibility": state, "model_invocable": state in ("on", "name-only"),
+            "listing_chars": len(listing), "listing_truncated": state == "on" and len(listing) > LISTING_CAP,
+            "always_est_tokens": est_tokens(listed),
+            "body_lines": body.count("\n") + 1, "on_invoke_est_tokens": est_tokens(len(body)),
+            "bundled_files": len(bundled)}
+
+
+def agent_record(agent: pathlib.Path, label: str, unreadable: list) -> dict:
+    meta, other, body = frontmatter(read(agent, unreadable))
+    return {"name": meta.get("name") or agent.stem, "scope": label, "path": str(agent), "frontmatter": meta,
+            "other_fields": other, "model": meta.get("model", "(inherits)"), "effort": meta.get("effort", "(unset)"),
+            "tools": meta.get("tools", "(all)"), "listing_chars": len(meta.get("description", "")),
+            "always_est_tokens": est_tokens(len(meta.get("description", ""))),
+            "body_lines": body.count("\n") + 1, "on_spawn_est_tokens": est_tokens(len(body))}
 
 
 def markdown_pieces(scope_list: list, overrides: dict, unreadable: list) -> dict:
     kinds = {"skills": [], "agents": [], "commands": [], "rules": [], "output_styles": []}
     for label, base in scope_list:
         for skill in sorted((base / "skills").glob("*/SKILL.md")):
-            meta, other, body = frontmatter(read(skill, unreadable))
-            name = meta.get("name") or skill.parent.name
-            listing = (meta.get("description", "") + " " + meta.get("when_to_use", "")).strip()
-            # skillOverrides applies to user and project skills; plugin skills are managed through /plugin.
-            state = "on" if label.startswith("plugin:") else str(overrides.get(name, "on"))
-            if meta.get("disable-model-invocation", "").lower() == "true" and state == "on":
-                state = "user-invocable-only"
-            listed = {"on": min(len(listing), LISTING_CAP), "name-only": len(name)}.get(state, 0)
-            refs = [p for p in skill.parent.rglob("*") if p.is_file() and p != skill]
-            kinds["skills"].append({
-                "name": name, "scope": label, "path": str(skill), "frontmatter": meta, "other_fields": other,
-                "visibility": state, "model_invocable": state in ("on", "name-only"),
-                "listing_chars": len(listing), "listing_truncated": state == "on" and len(listing) > LISTING_CAP,
-                "always_est_tokens": est_tokens(listed),
-                "body_lines": body.count("\n") + 1, "on_invoke_est_tokens": est_tokens(len(body)),
-                "bundled_files": len(refs)})
+            kinds["skills"].append(skill_record(skill, label, overrides, unreadable))
         for agent in sorted((base / "agents").rglob("*.md")):
-            meta, other, body = frontmatter(read(agent, unreadable))
-            if not meta.get("name") and not meta.get("description"):
-                continue
-            kinds["agents"].append({
-                "name": meta.get("name") or agent.stem, "scope": label, "path": str(agent), "frontmatter": meta,
-                "other_fields": other, "model": meta.get("model", "(inherits)"), "effort": meta.get("effort", "(unset)"),
-                "tools": meta.get("tools", "(all)"), "listing_chars": len(meta.get("description", "")),
-                "always_est_tokens": est_tokens(len(meta.get("description", ""))),
-                "body_lines": body.count("\n") + 1, "on_spawn_est_tokens": est_tokens(len(body))})
+            record = agent_record(agent, label, unreadable)
+            if record["frontmatter"].get("name") or record["frontmatter"].get("description"):
+                kinds["agents"].append(record)
         for kind, sub in (("commands", "commands"), ("rules", "rules"), ("output_styles", "output-styles")):
             for path in sorted((base / sub).rglob("*.md")):
                 text = read(path, unreadable)
@@ -239,52 +271,91 @@ def markdown_pieces(scope_list: list, overrides: dict, unreadable: list) -> dict
     return kinds
 
 
+def missing_scripts(command: str, home: pathlib.Path, project: pathlib.Path) -> list:
+    """Script files a hook command names that are not on disk. Paths it cannot resolve are left out, not guessed."""
+    text = command.replace('"', "").replace("'", "")
+    for var, target in (("CLAUDE_PROJECT_DIR", project), ("HOME", home.parent), ("USERPROFILE", home.parent)):
+        text = text.replace("${" + var + "}", str(target)).replace("$" + var, str(target)).replace("%" + var + "%", str(target))
+    text = re.sub(r"(?<![\w/\\])~(?=[/\\])", lambda _: str(home.parent), text)
+    missing = []
+    for token in re.findall(r"[^\s;|&()]+\." + SCRIPT_EXT + r"(?![\w.])", text):
+        if "$" in token or "%" in token:
+            continue  # an unresolved variable: unknown, not missing
+        path = pathlib.Path(token)
+        if not path.is_absolute():
+            path = project / path
+        if not path.exists():
+            missing.append(token)
+    return missing
+
+
 def settings_view(home: pathlib.Path, project: pathlib.Path, settings: list, unreadable: list) -> dict:
-    """Structure of the settings files: names, counts, hook definitions and the non-secret values."""
+    """Structure of the settings files: names, counts, hook definitions and the allowlisted values."""
     view = {"files": [], "hooks": [], "mcp_servers": []}
     for label, path, data in settings:
+        values = {k: scalar(data[k]) for k in SAFE_SETTINGS if k in data}
+        per_model = {}
+        for model_id, conf in as_dict(data.get("modelSettings")).items():
+            kept = {k: scalar(v) for k, v in as_dict(conf).items() if k in SAFE_SETTINGS}
+            if kept:
+                per_model[clean_name(model_id)] = kept
+        if per_model:
+            values["modelSettings"] = per_model
         perms = as_dict(data.get("permissions"))
         view["files"].append({
-            "scope": label, "path": str(path), "keys": sorted(data),
-            "values": {k: data[k] for k in SAFE_SETTINGS if k in data},
+            "scope": label, "path": str(path), "keys": sorted(data), "values": values,
             "env_names": sorted(as_dict(data.get("env"))),
-            "permissions": {k: (len(v) if isinstance(v, list) else v) for k, v in perms.items()},
+            "permissions": {k: (len(v) if isinstance(v, list) else scalar(v) if k == "defaultMode" else f"({type(v).__name__})")
+                            for k, v in perms.items()},
             "enabledPlugins": sorted(k for k, v in as_dict(data.get("enabledPlugins")).items() if v),
-            "skillOverrides": as_dict(data.get("skillOverrides"))})
+            "skillOverrides": {k: scalar(v) for k, v in as_dict(data.get("skillOverrides")).items()}})
         for event, groups in as_dict(data.get("hooks")).items():
             for group in as_list(groups):
                 group = as_dict(group)
                 for hook in as_list(group.get("hooks")):
                     hook = as_dict(hook)
-                    cmd = str(hook.get("command", ""))
-                    scripts = re.findall(r"[\"']?((?:~|\$HOME|\$CLAUDE_PROJECT_DIR|[A-Za-z]:|/|\.)[^\s\"']*\.(?:py|sh|js|mjs|ts|ps1|cmd|bat))", cmd)
-                    missing = []
-                    for s in scripts:
-                        resolved = s.replace("$HOME", str(pathlib.Path.home())).replace("$CLAUDE_PROJECT_DIR", str(project))
-                        if not pathlib.Path(os.path.expanduser(resolved)).exists():
-                            missing.append(s)
-                    options = {k: v for k, v in hook.items() if k not in ("command", "type", "timeout", "prompt", "headers", "url")
-                               and isinstance(v, (str, int, float, bool))}
-                    view["hooks"].append({"scope": label, "event": event, "matcher": str(group.get("matcher", "")),
-                                          "type": hook.get("type", "command"), "command": cmd,
-                                          "timeout": hook.get("timeout"), "options": options, "scripts_missing": missing})
-    for label, path in (("project", project / ".mcp.json"), ("user", home.parent / ".claude.json")):
-        for name, conf in as_dict(read_json(path, unreadable).get("mcpServers")).items():
-            view["mcp_servers"].append({"scope": label, "name": name, "transport": as_dict(conf).get("type", "stdio")})
+                    cmd = hook.get("command") if isinstance(hook.get("command"), str) else ""
+                    known = {"command", "type", "timeout"} | SAFE_HOOK_OPTIONS
+                    view["hooks"].append({
+                        "scope": label, "event": str(event), "matcher": scalar(group.get("matcher", "")),
+                        "type": scalar(hook.get("type", "command")), "command": cmd, "timeout": scalar(hook.get("timeout")),
+                        "options": {k: scalar(hook[k]) for k in SAFE_HOOK_OPTIONS if k in hook},
+                        "other_options": sorted(k for k in hook if k not in known),
+                        "scripts_missing": missing_scripts(cmd, home, project)})
+    user_config = read_json(home.parent / ".claude.json", unreadable)
+    sources = [("project", as_dict(read_json(project / ".mcp.json", unreadable).get("mcpServers"))),
+               ("user", as_dict(user_config.get("mcpServers")))]
+    for key, conf in as_dict(user_config.get("projects")).items():
+        try:
+            same = pathlib.Path(key).resolve() == project
+        except (OSError, ValueError):
+            same = False
+        if same:
+            sources.append(("local", as_dict(as_dict(conf).get("mcpServers"))))
+    for label, servers in sources:
+        for name, conf in servers.items():
+            view["mcp_servers"].append({"scope": label, "name": clean_name(name), "transport": scalar(as_dict(conf).get("type", "stdio"))})
     return view
 
 
 def overlaps(pieces: dict, limit: int = 15) -> list:
-    """Pairs of routing descriptions that share vocabulary. Candidates for a human or model to judge."""
+    """Pairs of routing descriptions that share vocabulary. Candidates for a human or model to judge.
+
+    Words that appear in more than a third of the descriptions say nothing about any one
+    of them, so they are ignored. That adapts to the setup's own language and vocabulary
+    without a stop-word list.
+    """
     items = []
     for kind in ("skills", "agents"):
         for p in pieces[kind]:
             if kind == "skills" and p["visibility"] != "on":
                 continue
             fm = p["frontmatter"]
-            words = set(re.findall(r"[a-zà-ú]{4,}", (fm.get("description", "") + " " + fm.get("when_to_use", "")).lower())) - STOP
-            if len(words) >= 5:
-                items.append((f"{kind[:-1]}:{p['name']}", words))
+            words = set(re.findall(r"[^\W\d_]{4,}", (fm.get("description", "") + " " + fm.get("when_to_use", "")).lower()))
+            items.append((f"{kind[:-1]}:{p['name']}", words))
+    seen_in = collections.Counter(w for _, words in items for w in words)
+    common = {w for w, n in seen_in.items() if len(items) >= 6 and n > len(items) / 3}
+    items = [(name, words - common) for name, words in items if len(words - common) >= 5]
     pairs = []
     for i, (a, wa) in enumerate(items):
         for b, wb in items[i + 1:]:
@@ -303,21 +374,74 @@ def usage(home: pathlib.Path, days: int, unreadable: list) -> dict:
     cutoff_iso, cutoff_epoch = cutoff_ts.strftime("%Y-%m-%dT%H:%M:%S"), cutoff_ts.timestamp()
     tools, skills, agents, effort, slash = (collections.Counter() for _ in range(5))
     result_chars = collections.Counter()
-    sessions = {"main": 0, "subagent": 0}
-    messages: dict = {}   # message id -> (scope, model, usage); a resumed session repeats ids, so last one wins
-    tool_seen: set = set()
-    bad_lines = 0
+    sessions = {"main": set(), "subagent": set()}
+    messages: dict = {}   # message id -> (scope, model, usage); a resumed session repeats rows, so each id counts once
+    rows_seen: set = set()  # row uuids, for the same reason
+    tool_of: dict = {}
+    skipped = collections.Counter()
     root = home / "projects"
     files = [(p, "main") for p in root.glob("*/*.jsonl")] + [(p, "subagent") for p in root.glob("*/*/subagents/*.jsonl")]
+
+    def take(row: dict, scope: str, fallback_session: str) -> None:
+        stamp = row.get("timestamp")
+        if not isinstance(stamp, str):
+            skipped["rows without a readable timestamp"] += 1
+            return
+        if stamp[:19] < cutoff_iso:
+            return
+        msg = row.get("message")
+        if not isinstance(msg, dict):
+            return
+        uid = row.get("uuid")
+        if isinstance(uid, str):
+            if uid in rows_seen:
+                return
+            rows_seen.add(uid)
+        session_id = row.get("sessionId") if isinstance(row.get("sessionId"), str) else fallback_session
+        sessions[scope].add(session_id if scope == "main" else fallback_session)
+        content = msg.get("content")
+        blocks = [b for b in as_list(content) if isinstance(b, dict)]
+        if row.get("type") == "assistant":
+            mid = msg.get("id")
+            if isinstance(mid, str) and isinstance(msg.get("usage"), dict):
+                model = clean_name(msg.get("model"))
+                if mid not in messages and isinstance(row.get("effort"), str):
+                    effort[f"{model} @ {clean_name(row['effort'])}"] += 1
+                messages[mid] = (scope, model, msg["usage"])
+            for block in blocks:
+                bid = block.get("id")
+                if block.get("type") != "tool_use" or not isinstance(bid, str) or bid in tool_of:
+                    continue
+                name, args = clean_name(block.get("name")), as_dict(block.get("input"))
+                tool_of[bid] = name
+                tools[name] += 1
+                if name == "Skill":
+                    skills[clean_name(args.get("skill"))] += 1
+                elif name in ("Agent", "Task"):
+                    agents[clean_name(args["subagent_type"]) if args.get("subagent_type") else "(unspecified)"] += 1
+        elif row.get("type") == "user":
+            typed_text = content if isinstance(content, str) else " ".join(str(b.get("text", "")) for b in blocks)
+            for typed_name in set(re.findall(r"<command-name>/?([\w:.-]{1,80})</command-name>", typed_text)):
+                slash[typed_name] += 1
+            for block in blocks:
+                if block.get("type") != "tool_result":
+                    continue
+                body = block.get("content")
+                if isinstance(body, str):
+                    size = len(body)
+                else:  # text blocks only: an image block is not text the model reads as characters
+                    size = sum(len(b["text"]) for b in as_list(body) if isinstance(b, dict) and isinstance(b.get("text"), str))
+                owner = block.get("tool_use_id")
+                result_chars[tool_of.get(owner, "(call not in window)") if isinstance(owner, str) else "(call not in window)"] += size
+
     for path, scope in files:
         try:
             if path.stat().st_mtime < cutoff_epoch:
                 continue
             handle = path.open(encoding="utf-8", errors="replace")
         except OSError as exc:
-            unreadable.append(f"{path}: {exc}")
+            unreadable.append(f"{path}: {type(exc).__name__}")
             continue
-        tool_of, active = {}, False
         with handle:
             for line in handle:
                 if ('"tool_use"' not in line and '"tool_result"' not in line and '"usage"' not in line
@@ -325,58 +449,21 @@ def usage(home: pathlib.Path, days: int, unreadable: list) -> dict:
                     continue
                 try:
                     row = json.loads(line)
-                except ValueError:
-                    bad_lines += 1
-                    continue
-                if not isinstance(row, dict) or str(row.get("timestamp", "9"))[:19] < cutoff_iso:
-                    continue
-                msg = row.get("message")
-                if not isinstance(msg, dict):
-                    continue
-                active = True
-                content = msg.get("content")
-                blocks = [b for b in as_list(content) if isinstance(b, dict)]
-                if row.get("type") == "assistant":
-                    if msg.get("id") and isinstance(msg.get("usage"), dict):
-                        if msg["id"] not in messages and row.get("effort"):
-                            effort[f"{msg.get('model', '?')} @ {row['effort']}"] += 1
-                        messages[msg["id"]] = (scope, str(msg.get("model", "?")), msg["usage"])
-                    for block in blocks:
-                        if block.get("type") != "tool_use" or block.get("id") in tool_seen:
-                            continue
-                        tool_seen.add(block.get("id"))
-                        name, args = str(block.get("name", "?")), as_dict(block.get("input"))
-                        tool_of[block.get("id")] = name
-                        tools[name] += 1
-                        if name == "Skill":
-                            skills[str(args.get("skill", "?"))] += 1
-                        elif name in ("Agent", "Task"):
-                            agents[str(args.get("subagent_type") or "(unspecified)")] += 1
-                elif row.get("type") == "user":
-                    typed_text = content if isinstance(content, str) else " ".join(str(b.get("text", "")) for b in blocks)
-                    for typed_name in set(re.findall(r"<command-name>/?([\w:.-]+)</command-name>", typed_text)):
-                        slash[typed_name] += 1
-                    for block in blocks:
-                        if block.get("type") == "tool_result":
-                            body = block.get("content")
-                            if isinstance(body, str):
-                                size = len(body)
-                            else:  # text blocks only: an image block is not text the model reads as characters
-                                size = sum(len(str(b.get("text", ""))) for b in as_list(body) if isinstance(b, dict))
-                            result_chars[tool_of.get(block.get("tool_use_id"), "?")] += size
-        if active:
-            sessions[scope] += 1
-    if bad_lines:
-        unreadable.append(f"{root}: {bad_lines} session lines were not valid JSON and were not counted")
+                    if isinstance(row, dict):
+                        take(row, scope, str(path))
+                except (ValueError, TypeError, AttributeError, KeyError, RecursionError):
+                    skipped["session lines that could not be read"] += 1
+    for reason, count in skipped.items():
+        unreadable.append(f"{root}: {count} {reason}, not counted")
 
     tokens = collections.defaultdict(collections.Counter)
     by_scope = collections.defaultdict(collections.Counter)
     for scope, model, use in messages.values():
         for bucket in (tokens[f"{scope} | {model}"], by_scope[scope]):
-            bucket["input"] += use.get("input_tokens") or 0
-            bucket["cache_write"] += use.get("cache_creation_input_tokens") or 0
-            bucket["cache_read"] += use.get("cache_read_input_tokens") or 0
-            bucket["output"] += use.get("output_tokens") or 0
+            bucket["input"] += num(use.get("input_tokens"))
+            bucket["cache_write"] += num(use.get("cache_creation_input_tokens"))
+            bucket["cache_read"] += num(use.get("cache_read_input_tokens"))
+            bucket["output"] += num(use.get("output_tokens"))
             bucket["requests"] += 1
     total = collections.Counter()
     for bucket in by_scope.values():
@@ -385,9 +472,9 @@ def usage(home: pathlib.Path, days: int, unreadable: list) -> dict:
     def prompt_side(b) -> int:
         return b["input"] + b["cache_write"] + b["cache_read"]
 
-    typed = sum(n for a, n in agents.items() if a not in GENERIC_AGENTS)
     return {
-        "window_days": days, "scope": "every project on this machine", "sessions": sessions,
+        "window_days": days, "scope": "every project on this machine",
+        "sessions": {k: len(v) for k, v in sessions.items()},
         "tokens_by_scope_and_model": {k: dict(v) for k, v in sorted(tokens.items())},
         "tokens_total": dict(total),
         "avg_prompt_tokens_per_request": {s: round(prompt_side(b) / b["requests"]) for s, b in sorted(by_scope.items()) if b["requests"]},
@@ -395,7 +482,6 @@ def usage(home: pathlib.Path, days: int, unreadable: list) -> dict:
         "subagent_share_of_output_tokens": round(by_scope["subagent"]["output"] / total["output"], 4) if total["output"] else None,
         "tool_calls": dict(tools.most_common()), "skill_invocations": dict(skills.most_common()),
         "typed_commands": dict(slash.most_common()), "agent_spawns": dict(agents.most_common()),
-        "typed_agent_share_of_spawns": round(typed / sum(agents.values()), 4) if agents else None,
         "tool_result_chars": dict(result_chars.most_common(12)), "requests_by_model_and_effort": dict(effort.most_common())}
 
 
@@ -422,21 +508,26 @@ def build(home: pathlib.Path, project: pathlib.Path, days: int) -> dict:
     used_skills = {k.split(":")[-1] for k in {**hist.get("skill_invocations", {}), **hist.get("typed_commands", {})}}
     used_agents = {k.split(":")[-1] for k in hist.get("agent_spawns", {})}
     defined_agents = {a["name"] for a in pieces["agents"]}
+    spawns = hist.get("agent_spawns", {})
+    if hist:
+        to_defined = sum(n for a, n in spawns.items() if a.split(":")[-1] in defined_agents)
+        hist["share_of_spawns_to_agents_defined_here"] = round(to_defined / sum(spawns.values()), 4) if spawns else None
     return {
         "generated": dt.datetime.now().isoformat(timespec="seconds"), "home": str(home), "project": str(project),
         "estimate_note": f"est_tokens = characters / {CHARS_PER_TOKEN}; an estimate, not a tokenizer count",
-        "not_measured": ["the built-in system prompt and tool definitions", "MCP tool definitions (see /context in a session)",
-                         "bundled skills", "auto memory (MEMORY.md)", "sessions from other machines",
-                         "whether the skill listing exceeds its context budget", "which agent each request's effort belongs to"],
+        "not_measured": [
+            "the built-in system prompt and tool definitions", "MCP tool definitions (see /context in a session)",
+            "bundled skills", "auto memory (MEMORY.md)", "sessions from other machines", "managed settings",
+            "hooks defined by plugins or in skill and subagent frontmatter",
+            "whether the skill listing exceeds its context budget", "which agent each request's effort belongs to",
+            "hook script paths that depend on an unresolved variable"],
         "fixed_context_est_tokens": {**fixed, "total": sum(fixed.values())},
         "instruction_files": instr, **pieces, "settings": settings, "description_overlaps": overlaps(pieces),
         "usage": hist,
         "never_invoked_in_window": {
             "skills": sorted(s["name"] for s in pieces["skills"] if s["model_invocable"] and s["name"] not in used_skills),
             "agents": sorted(a["name"] for a in pieces["agents"] if a["name"] not in used_agents)} if hist else {},
-        "spawned_without_definition_here": sorted(
-            a for a in hist.get("agent_spawns", {}) if a.split(":")[-1] not in defined_agents and a not in GENERIC_AGENTS
-            and a not in BUILT_IN_AGENTS) if hist else [],
+        "spawned_without_definition_here": sorted(a for a in spawns if a.split(":")[-1] not in defined_agents),
         "unreadable": unreadable}
 
 
@@ -451,9 +542,10 @@ def summary(doc: dict) -> str:
     restricted = sum(1 for s in doc["skills"] if s["visibility"] != "on")
     if restricted:
         lines.append(f"skills restricted by settings or frontmatter (not fully listed to the model): {restricted}")
-    long_files = [f for f in doc["instruction_files"] if f["lines"] > 200]
+    long_files = [f for f in doc["instruction_files"] if f["lines"] > LONG_FILE_LINES]
     if long_files:
-        lines.append("instruction files over 200 lines: " + ", ".join(f"{pathlib.Path(f['path']).name} ({f['lines']})" for f in long_files))
+        lines.append(f"instruction files over {LONG_FILE_LINES} lines: "
+                     + ", ".join(f"{pathlib.Path(f['path']).name} ({f['lines']})" for f in long_files))
     broken = [h for h in doc["settings"]["hooks"] if h["scripts_missing"]]
     if broken:
         lines.append(f"hooks naming a script that does not exist: {len(broken)}")
@@ -495,7 +587,7 @@ def compare(before: dict, after: dict) -> str:
                 "agents never invoked in window": len(doc["never_invoked_in_window"]["agents"]),
                 "output tokens per session": round(total.get("output", 0) / max(use["sessions"]["main"], 1)),
                 "cache-read share of prompt tokens": use.get("cache_read_share_of_prompt_tokens"),
-                "typed-agent share of spawns": use.get("typed_agent_share_of_spawns")})
+                "share of spawns to agents defined here": use.get("share_of_spawns_to_agents_defined_here")})
             for scope, value in (use.get("avg_prompt_tokens_per_request") or {}).items():
                 rows[f"average prompt-side tokens per request ({scope})"] = value
         return rows
@@ -515,16 +607,44 @@ def compare(before: dict, after: dict) -> str:
     return "\n".join(lines)
 
 
+def piece(path: pathlib.Path) -> dict:
+    """One skill or subagent file measured on its own, whether or not it is installed anywhere."""
+    unreadable: list = []
+    if path.is_dir():
+        path = path / "SKILL.md"
+    record = skill_record(path, "standalone", {}, unreadable) if path.name == "SKILL.md" else agent_record(path, "standalone", unreadable)
+    if path.name == "SKILL.md":
+        # text the skill can send its reader to, totalled per folder; none of it loads until it is read
+        folders = collections.defaultdict(lambda: {"files": 0, "est_tokens": 0})
+        for p in path.parent.rglob("*"):
+            if p.is_file() and p.parent != path.parent and ".git" not in p.parts and p.suffix in (".md", ".txt"):
+                entry = folders[p.relative_to(path.parent).parts[0]]
+                entry["files"] += 1
+                entry["est_tokens"] += est_tokens(p.stat().st_size)
+        record["bundled"] = dict(sorted(folders.items()))
+    record["unreadable"] = unreadable
+    return record
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    ap.add_argument("--home", default=str(pathlib.Path.home() / ".claude"), help="user-level directory (default: ~/.claude)")
+    default_home = os.environ.get("CLAUDE_CONFIG_DIR") or str(pathlib.Path.home() / ".claude")
+    ap.add_argument("--home", default=default_home, help="user-level directory (default: $CLAUDE_CONFIG_DIR, else ~/.claude)")
     ap.add_argument("--project", default=".", help="project directory (default: current directory)")
     ap.add_argument("--days", type=int, default=30, help="days of session history to read; 0 skips it (default: 30)")
     ap.add_argument("--out", default="", help="write the full JSON here")
     ap.add_argument("--compare", default="", help="an earlier JSON written with --out; prints what changed since")
+    ap.add_argument("--piece", default="", help="measure one skill folder, SKILL.md or subagent file on its own, and stop")
     args = ap.parse_args()
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")
+    if args.piece:
+        target = pathlib.Path(args.piece).expanduser()
+        if not target.exists():
+            print(f"no file or folder at {target}", file=sys.stderr)
+            return 2
+        print(json.dumps(piece(target), indent=2, ensure_ascii=False))
+        return 0
     home, project = pathlib.Path(args.home).expanduser(), pathlib.Path(args.project).expanduser().resolve()
     if not home.is_dir():
         print(f"no Claude Code directory at {home}", file=sys.stderr)

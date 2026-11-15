@@ -51,6 +51,13 @@ never write a value from `env` or text from a session into its output. Add a
 test in `tests/test_instrument.py` for any new figure, built on the temporary
 setup the tests create, so the suite never reads a developer's own files.
 
+## Changing a guide
+
+A change to `SKILL.md` or a guide changes how reviews come out, and reading the
+text will not tell you how. Build the calibration setups and run the review
+against both, as [evals/README.md](evals/README.md) describes, before and after
+the change.
+
 ## Pull requests
 
 Describe what changed for someone using the skill. For a change to a guide, say

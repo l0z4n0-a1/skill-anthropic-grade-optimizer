@@ -11,12 +11,13 @@ Usage:
   kb.py models                         list model ids that have model-specific claims
   kb.py show TOPIC[,TOPIC...] [--model ID] [--kind fact|behavior|practice] [--grep TEXT] [--brief] [--quotes]
   kb.py model ID [--brief]             every claim tied to that model id
+  kb.py core [QUESTION]                the short first read for one review question; no argument lists them
   kb.py cite ID[,ID...]                full records, with quote and source URL, for a report
 
 `show` prints claims that apply to every model plus, with --model, those tied to
 that model. Claims tied only to other models are left out.
 
-In:  kb/claims/*.jsonl, kb/sources.json, kb/snapshots.lock.json
+In:  kb/claims/*.jsonl, kb/core.json, kb/sources.json, kb/snapshots.lock.json
 Out: text on stdout. Exit 1 when the selection is empty or an id is unknown.
 """
 from __future__ import annotations
@@ -49,8 +50,9 @@ def source_ref(sid: str) -> str:
 
 
 def applies(claim: dict, model: str) -> bool:
+    """`model` may name several ids, comma-separated, for a piece that more than one model reads."""
     scope = set(claim["applies_to"])
-    return bool(scope & GENERAL) or (bool(model) and model in scope)
+    return bool(scope & GENERAL) or bool(scope & {m for m in model.split(",") if m})
 
 
 def line(claim: dict, quotes: bool, brief: bool = False) -> str:
@@ -76,6 +78,8 @@ def main() -> int:
     one = sub.add_parser("model")
     one.add_argument("id")
     one.add_argument("--brief", action="store_true", help="one line per claim: id and claim only")
+    core = sub.add_parser("core")
+    core.add_argument("question", nargs="?", default="")
     cite = sub.add_parser("cite")
     cite.add_argument("ids")
     args = ap.parse_args()
@@ -89,6 +93,19 @@ def main() -> int:
     if args.cmd == "models":
         counts = collections.Counter(m for c in claims for m in c["applies_to"] if m not in GENERAL)
         print("\n".join(f"{m:22} {n}" for m, n in sorted(counts.items())))
+        return 0
+    if args.cmd == "core":
+        questions = json.loads((KB / "core.json").read_text(encoding="utf-8"))
+        if not args.question:
+            print("\n".join(f"{name:13} {len(q['claims']):>2} claims  {q['principle']}" for name, q in questions.items()))
+            return 0
+        if args.question not in questions:
+            print("unknown question; choose from: " + ", ".join(questions), file=sys.stderr)
+            return 1
+        by_id = {c["id"]: c for c in claims}
+        print(f"What Anthropic's documentation says, in short: {questions[args.question]['principle']}\n")
+        print("\n".join(line(by_id[i], False) for i in questions[args.question]["claims"]))
+        print(f"\n{len(questions[args.question]['claims'])} core claims; `show` lists the rest of a topic")
         return 0
     if args.cmd == "model":
         picked = [c for c in claims if args.id in c["applies_to"]]

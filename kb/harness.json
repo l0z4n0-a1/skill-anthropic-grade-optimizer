@@ -1,0 +1,6 @@
+{
+  "_about": "Numbers about Claude Code that scripts/measure.py depends on. Each one names the claim that documents it, and a test checks that the claim still states the number. When the documentation changes, kb_gate.py flags the claim, and the number is corrected here, not in the script.",
+  "skill_listing_cap_chars": {"value": 1536, "claim": "skills-001", "stated_as": "1,536"},
+  "instruction_import_max_hops": {"value": 4, "claim": "context-014", "stated_as": "four hops"},
+  "instruction_file_recommended_max_lines": {"value": 200, "claim": "context-012", "stated_as": "200 lines"}
+}

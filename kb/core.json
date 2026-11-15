@@ -1,0 +1,173 @@
+{
+  "placement": {
+    "principle": "A rule that must always hold belongs in a hook or a permission rule, because an instruction in CLAUDE.md or a skill is a request and not a guarantee. Everything else goes where it loads at the right time: always-needed facts in CLAUDE.md or unscoped rules, area-specific guidance in path-scoped rules, and task procedures in skills that load only when used.",
+    "claims": [
+      "harness-002",
+      "harness-003",
+      "harness-019",
+      "harness-007",
+      "context-019",
+      "skills-802",
+      "harness-029",
+      "harness-031",
+      "hooks-034",
+      "hooks-015",
+      "harness-061",
+      "harness-027"
+    ]
+  },
+  "economy": {
+    "principle": "Every feature you add consumes context, so the setup should be judged by what loads at start and every turn against what it buys, and by what survives compaction. Caching matches an exact prefix, so changing the model or the early part of the request rebuilds it; cost levers are applied in order, free wins first and model choice last, and real usage is measured with /context and /usage.",
+    "claims": [
+      "context-001",
+      "harness-014",
+      "context-013",
+      "context-005",
+      "context-002",
+      "cost-001",
+      "cost-003",
+      "cost-010",
+      "cost-018",
+      "cost-047",
+      "context-007",
+      "cost-023"
+    ]
+  },
+  "routing": {
+    "principle": "Claude picks a skill or subagent by reading its name and description alone, so the description must say what it does and when to use it, lead with the words a request would contain, and stay short enough to survive the listing budget, because descriptions past the cap or budget are cut and vague or overlapping ones cause the wrong pick or a miss.",
+    "claims": [
+      "skills-001",
+      "skills-002",
+      "skills-801",
+      "skills-048",
+      "skills-050",
+      "skills-049",
+      "skills-046",
+      "skills-007",
+      "harness-016",
+      "subagents-037",
+      "subagents-010",
+      "prompting-053"
+    ]
+  },
+  "allocation": {
+    "principle": "Tuning effort is often a better lever than switching models, and effort is a behavioral signal and not a strict token budget. Match tier to work by routing easy or high-volume work to cheaper models, remembering that a subagent with no model of its own inherits the session's model and that multi-agent work costs many times more tokens, so it must be worth it.",
+    "claims": [
+      "model-247",
+      "cost-049",
+      "model-252",
+      "model-259",
+      "subagents-007",
+      "model-261",
+      "cost-040",
+      "orchestration-036",
+      "model-249",
+      "cost-067",
+      "orchestration-038",
+      "model-267"
+    ]
+  },
+  "skill": {
+    "principle": "Only a skill's name and description are always in context; the body loads when the skill is used and then stays, so it should be short standing instructions with detail in referenced files and scripts. Frontmatter field names must match exactly or are silently ignored, and some fields do less than they sound, such as allowed-tools granting rather than restricting and model or effort applying for one turn.",
+    "claims": [
+      "skills-004",
+      "skills-011",
+      "skills-012",
+      "skills-016",
+      "skills-019",
+      "skills-023",
+      "skills-025",
+      "skills-026",
+      "skills-028",
+      "skills-052",
+      "skills-054",
+      "skills-059"
+    ]
+  },
+  "subagent": {
+    "principle": "A subagent starts in a fresh context with only its own system prompt and the task message Claude writes, so the brief must carry everything it needs and the return should be a condensed summary. Delegation pays when a side task would flood the main conversation with output, not when phases share context, since each subagent spends tokens of its own and its report lands in the main context.",
+    "claims": [
+      "subagents-011",
+      "subagents-014",
+      "subagents-009",
+      "subagents-004",
+      "subagents-007",
+      "subagents-019",
+      "subagents-020",
+      "subagents-028",
+      "orchestration-001",
+      "orchestration-041",
+      "context-036",
+      "subagents-029"
+    ]
+  },
+  "instructions": {
+    "principle": "CLAUDE.md is context delivered as a user message, not enforced configuration, so it should stay under 200 lines and hold only what Claude cannot find by reading the repo, such as exact verification commands. Splitting with imports does not cut cost, and adherence drops when instructions are vague, conflicting, or buried in a long file.",
+    "claims": [
+      "context-012",
+      "context-013",
+      "harness-023",
+      "harness-024",
+      "harness-025",
+      "context-020",
+      "context-017",
+      "context-019",
+      "context-005",
+      "harness-059",
+      "harness-026",
+      "context-018"
+    ]
+  },
+  "hooks": {
+    "principle": "Hooks give deterministic control, so actions always happen instead of relying on the model to choose them. Only exit code 2 blocks and not every event can block, and by default a hook that fails or times out lets the action proceed unless onFailure is block; static instructions that never change belong in CLAUDE.md instead.",
+    "claims": [
+      "hooks-030",
+      "hooks-001",
+      "hooks-004",
+      "hooks-005",
+      "hooks-006",
+      "hooks-008",
+      "hooks-014",
+      "hooks-015",
+      "hooks-017",
+      "hooks-012",
+      "hooks-801",
+      "hooks-019"
+    ]
+  },
+  "prompting": {
+    "principle": "Give the reason behind an instruction and describe the situation, because Claude generalizes from the explanation and follows instructions precisely, so extra scope must be asked for. Emphasis, prohibition lists, step-by-step choreography and single gold examples written for older models now over-apply, so each is a tested, scoped fix and not a default register, and an audit targets named outdated instructions rather than shortening for its own sake.",
+    "claims": [
+      "prompting-068",
+      "prompting-069",
+      "prompting-029",
+      "prompting-017",
+      "prompting-018",
+      "prompting-091",
+      "prompting-027",
+      "prompting-028",
+      "prompting-015",
+      "prompting-060",
+      "prompting-030",
+      "prompting-001",
+      "prompting-096"
+    ]
+  },
+  "verifying": {
+    "principle": "Audit the evaluation before trusting it, since the most surprising results usually turn out to be bugs in the eval and not facts about the model. Check that it can pass and can fail, that it runs the shipped configuration with enough trials to beat the noise, and compare with and without the change; removing an instruction is a hypothesis tested by behavior, not by asking the model.",
+    "claims": [
+      "evals-001",
+      "evals-002",
+      "evals-006",
+      "evals-007",
+      "evals-008",
+      "evals-011",
+      "evals-014",
+      "evals-019",
+      "skills-041",
+      "plugins-020",
+      "prompting-065",
+      "evals-003"
+    ]
+  }
+}
