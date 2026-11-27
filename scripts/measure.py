@@ -701,6 +701,8 @@ def hook_script_paths(command: str, home: pathlib.Path, project: pathlib.Path, u
             if os.name == "nt":  # a Git Bash style path, or a path on the current drive: the base is not known
                 result["unresolved"].append(word)
                 continue
+            if result["note"]:  # Windows syntax: a backslash after a substituted variable is a separator
+                token = token.replace("\\", "/")
             path = pathlib.Path(token)
         else:
             if "\\" in token and os.name != "nt":
