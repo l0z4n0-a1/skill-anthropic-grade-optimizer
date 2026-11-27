@@ -20,6 +20,8 @@ Out: a report on stdout, as text or with --json as one object (also written to -
                        and the claims that rest on them.
        new_pages, removed_pages [{index, url}]; no_index_baseline [index url];
        snapshot_mismatch [id]: a local snapshot whose hash differs from the lock;
+       relocated [id]: unchanged bytes, but the lock entry names another locator than sources.json now
+                       has (--apply rewrites the entry; it is not pending, nothing changed to read);
        unreadable_claim_lines int; incomplete [str]: why the comparison was not complete;
        compared int: sources and indexes actually compared.
        restored_snapshots [id], no_previous [id]: set by --apply (empty otherwise). `no_previous` are the
@@ -33,7 +35,7 @@ Fails: exit 2 misuse, decided before any request: --apply or --reviewed outside 
        1 a download failed and nothing could be compared;
        3 there is work: a changed source, a new or removed page, or a pending item;
        4 nothing changed was seen but the comparison was incomplete (a download failed, an index has no
-         baseline, a local snapshot differs from the lock, a claim line was unreadable);
+         baseline, a local snapshot differs from the lock, a lock entry is relocated, a claim line was unreadable);
        0 the declared scope was compared completely and nothing changed or is pending.
        Precedence: 2, 1, 3, 4, 0. A partial failure shows in the report and, with work present, stays exit 3.
        A removed page alone is work. Failed sources keep their lock entry.
@@ -45,7 +47,7 @@ lock entry is pending, a new source is not), then the previous snapshot of each 
 kb/snapshots-prev/<id>.md (only if the local file matches the lock), then the snapshots, then
 index.lock.json, and snapshots.lock.json last. Pending accumulates until `--reviewed ID[,ID...]|all`
 removes items; --reviewed first runs the gate and refuses unless it reports no errors and every snapshot
-to release exists. So an update that stops halfway keeps flagging its claims: the check reports pending
+to release exists and its hash matches the lock (then the previous copy is deleted). So an update that stops halfway keeps flagging its claims: the check reports pending
 items as work even when today's bytes match.
 
 Modes:
@@ -151,8 +153,8 @@ def pinned_ids() -> set[str]:
     return ids
 
 
-def check(args) -> tuple[dict, dict, dict, dict]:
-    """Compare the outside with the locks. Returns (report, bodies of changed sources, bodies to restore, index url lists)."""
+def check(args) -> tuple[dict, dict, dict, dict, dict]:
+    """Compare the outside with the locks. Returns (report, bodies of changed sources, bodies to restore, relocated sources, index url lists)."""
     sources = read_json(KB / "sources.json", [])
     lock = read_json(KB / "snapshots.lock.json", {})
     index_lock = read_json(KB / "index.lock.json", {})
@@ -166,11 +168,12 @@ def check(args) -> tuple[dict, dict, dict, dict]:
               "lock_oldest": fetched_on[0] if fetched_on else None, "lock_newest": fetched_on[-1] if fetched_on else None,
               "changed_sources": [], "pending": {"sources": [], "new_pages": [], "removed_pages": []},
               "unchanged": [], "failed": [], "not_checked": [], "not_compared": {"sources": 0, "claims": 0},
-              "new_pages": [], "removed_pages": [], "no_index_baseline": [], "snapshot_mismatch": [],
+              "new_pages": [], "removed_pages": [], "no_index_baseline": [], "snapshot_mismatch": [], "relocated": [],
               "unreadable_claim_lines": unreadable, "incomplete": [], "compared": 0,
               "restored_snapshots": [], "no_previous": []}
     bodies: dict[str, bytes] = {}
     restore: dict[str, bytes] = {}
+    relocate: dict[str, tuple] = {}
     out_of_time = f"time budget of {args.max_seconds or MAX_SECONDS} s used up before this download"
 
     for src in sources:
@@ -197,6 +200,10 @@ def check(args) -> tuple[dict, dict, dict, dict]:
         digest = sha(body)
         if digest == lock.get(sid, {}).get("sha256"):
             report["unchanged"].append(sid)
+            if lock[sid].get("source") != kb_fetch.source_label(src):
+                report["relocated"].append(sid)
+                if args.apply:
+                    relocate[sid] = (src, body)
             local = KB / "snapshots" / f"{sid}.md"
             if local.exists() and sha(local.read_bytes()) != digest:
                 report["snapshot_mismatch"].append(sid)
@@ -245,16 +252,17 @@ def check(args) -> tuple[dict, dict, dict, dict]:
     for label, items in (("a source or index failed to download", report["failed"]),
                          ("an index has no baseline", report["no_index_baseline"]),
                          ("a local snapshot differs from the lock", report["snapshot_mismatch"]),
+                         ("a lock entry names a locator that sources.json no longer has", report["relocated"]),
                          ("claim lines could not be read, so impact counts are low", unreadable)):
         if items:
             report["incomplete"].append(label)
     work = (report["changed_sources"] or report["new_pages"] or report["removed_pages"]
             or any(report["pending"].values()))
     report["exit"] = 1 if report["failed"] and not report["compared"] else 3 if work else 4 if report["incomplete"] else 0
-    return report, bodies, restore, urls_now
+    return report, bodies, restore, relocate, urls_now
 
 
-def apply(report: dict, bodies: dict, restore: dict, urls_now: dict) -> None:
+def apply(report: dict, bodies: dict, restore: dict, relocate: dict, urls_now: dict) -> None:
     """Order matters: pending first, so a run cut short still flags what it changed; the lock last."""
     sources = {s["id"]: s for s in read_json(KB / "sources.json", [])}
     lock = read_json(KB / "snapshots.lock.json", {})
@@ -272,9 +280,11 @@ def apply(report: dict, bodies: dict, restore: dict, urls_now: dict) -> None:
         index_lock = read_json(KB / "index.lock.json", {})
         index_lock.update(urls_now)
         write_json(KB / "index.lock.json", index_lock)
-    if bodies:
+    if bodies or relocate:
         for sid, body in bodies.items():
             lock[sid] = kb_fetch.lock_entry(sources[sid], body, today)
+        for sid, (src, body) in relocate.items():
+            lock[sid] = kb_fetch.lock_entry(src, body, today)
         write_json(KB / "snapshots.lock.json", lock)
 
 
@@ -337,16 +347,26 @@ def review(items: str) -> int:
         print(f"refusing --reviewed: the gate reports {len(gate['errors'])} errors, the first being: {gate['errors'][0]}. "
               "Fix them and run `python scripts/kb_gate.py` until it exits 0.", file=sys.stderr)
         return 2
-    no_snapshot = sorted(s for s in wanted if s in pending["sources"] and not (KB / "snapshots" / f"{s}.md").exists())
+    sources = [s for s in wanted if s in pending["sources"]]
+    no_snapshot = sorted(s for s in sources if not (KB / "snapshots" / f"{s}.md").exists())
     if no_snapshot:
         print(f"refusing --reviewed: no snapshot for {', '.join(no_snapshot)}, so the gate did not check their claims. "
               "Fetch them (`python scripts/kb_update.py --apply`, with --bundled-dir for bundled sources) and run the gate.",
               file=sys.stderr)
         return 2
+    # The gate hashes only the snapshots that claims cite; a pending source with no claims is hashed here.
+    lock = read_json(KB / "snapshots.lock.json", {})
+    edited = sorted(s for s in sources if sha((KB / "snapshots" / f"{s}.md").read_bytes()) != lock.get(s, {}).get("sha256"))
+    if edited:
+        print(f"refusing --reviewed: the snapshot of {', '.join(edited)} does not match snapshots.lock.json (edited here, or the "
+              "lock has no entry). Restore it with `python scripts/kb_update.py --apply` and read it again.", file=sys.stderr)
+        return 2
     for key in pending:
         for i in wanted:
             pending[key].pop(i, None)
     write_json(KB / "pending.json", pending)
+    for sid in sources:  # the diff belongs to the cycle just closed; the next change makes its own
+        (KB / "snapshots-prev" / f"{sid}.md").unlink(missing_ok=True)
     print(f"pending left: {sum(len(v) for v in pending.values())}")
     return 0
 
@@ -404,7 +424,7 @@ def main(argv=None) -> int:
             print(f"--out {args.out} is inside the plugin directory; write the report elsewhere", file=sys.stderr)
             return 2
 
-    report, bodies, restore, urls_now = check(args)
+    report, bodies, restore, relocate, urls_now = check(args)
     if not report["compared"] and not report["failed"]:
         print("nothing was compared: the selected sources are bundled or local files, which need --bundled-dir, "
               "or sources.json lists none", file=sys.stderr)
@@ -413,7 +433,7 @@ def main(argv=None) -> int:
     if args.apply and report["failed"] and not args.partial:
         print(f"nothing applied: {len(report['failed'])} sources failed to download; run again, or use --partial", file=sys.stderr)
     elif args.apply:
-        apply(report, bodies, restore, urls_now)
+        apply(report, bodies, restore, relocate, urls_now)
         report["applied"] = True
     if args.out:
         atomic_write(pathlib.Path(args.out), (json.dumps(report, indent=2, ensure_ascii=False) + "\n").encode("utf-8"))

@@ -97,9 +97,12 @@ reads, so no review may use this checkout until the branch is merged.
    delete it.
 3. **Re-read the survivors.** A quote that is still there can have gained an
    exception in the next paragraph, which the gate cannot see. For every changed
-   source, read the diff (`kb/snapshots-prev/<id>.md` against
-   `kb/snapshots/<id>.md`; for a source under `no_previous` there is no diff,
-   so read the whole snapshot) and re-read **all** the claims that depend on it,
+   source, and every source listed in `kb/pending.json` (a resumed run may
+   list a source there that this run did not download again), read the diff
+   (`kb/snapshots-prev/<id>.md` against `kb/snapshots/<id>.md`). Where there
+   is no `kb/snapshots-prev/<id>.md`, whether or not the source appears under
+   `no_previous`, there is no diff: read the whole snapshot. Then re-read
+   **all** the claims that depend on it,
    including those whose quote survived, against the changed sections: scope,
    exceptions, version. Record how many were retained, corrected and removed.
 4. **Extract** from each changed or new snapshot, with `kb/EXTRACTION.md` as

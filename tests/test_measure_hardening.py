@@ -638,6 +638,51 @@ class ConfinementTest(Isolated):
         named = (self.home.parent / ".claude.json", "--user-config")
         self.assertEqual([s["name"] for s in self.build(confine=True, user_config=named)["settings"]["mcp_servers"]], ["beside"])
 
+    def test_a_folder_that_links_out_of_scope_is_not_listed_when_confined(self):
+        # every folder the script lists: its outside names must not reach the report, and the folder is named as skipped
+        for sub in ("rules", "commands", "output-styles", "agents"):
+            write(self.base / "outside" / sub / "leak-name.md", "---\nname: leakname\ndescription: leaked\n---\nbody")
+        write(self.base / "outside" / "skills" / "leakskill" / "SKILL.md", SKILL.format(name="leakskill", desc="x"))
+        write(self.project / ".claude" / "rules" / "own.md", "own rule")
+        for sub in ("commands", "output-styles", "agents", "skills"):
+            self.link_dir(self.project / ".claude" / sub, self.base / "outside" / sub)
+        rules = self.project / ".claude" / "rules"
+        self.link_dir(rules / "linked", self.base / "outside" / "rules")  # a link inside a folder that is itself in scope
+        open_doc = self.build()
+        self.assertIn("leak-name.md", json.dumps(open_doc))  # without --no-external-reads the link is followed
+        doc = self.build(confine=True)
+        self.assertNotIn("leak", json.dumps({k: v for k, v in doc.items() if k != "read_scope"}))
+        self.assertEqual([r["name"] for r in doc["rules"]], ["own"])
+        skipped = " ".join(doc["read_scope"]["skipped_outside_scope"])
+        for sub in ("commands", "output-styles", "agents", "skills"):
+            self.assertIn(sub, skipped)
+
+    def test_a_folder_the_scanner_calls_outside_is_not_listed(self):
+        # the same check with no link: the scanner says the folder is outside, so it must not even be enumerated
+        write(self.project / ".claude" / "rules" / "leak-name.md", "text")
+        write(self.project / ".claude" / "agents" / "leak-agent.md", "---\nname: leaker\ndescription: d\n---\nx")
+        write(self.project / ".claude" / "skills" / "leakskill" / "SKILL.md", SKILL.format(name="leakskill", desc="x"))
+        real_inside = measure.Scan.inside
+        listed = []
+        real_glob, real_rglob = pathlib.Path.glob, pathlib.Path.rglob
+
+        def watch(real):
+            def wrapper(path, pattern, *a, **k):
+                listed.append(path.name)
+                return real(path, pattern, *a, **k)
+            return wrapper
+
+        def outside(scan, p):  # the three folders, and anything below them, count as outside
+            below = set(p.relative_to(self.project).parts) if self.project in p.parents else set()
+            return not {"rules", "agents", "skills"} & below and real_inside(scan, p)
+        with mock.patch.object(measure.Scan, "inside", outside), mock.patch.object(pathlib.Path, "glob", watch(real_glob)), \
+                mock.patch.object(pathlib.Path, "rglob", watch(real_rglob)):
+            doc = self.build(confine=True)
+        self.assertEqual((doc["rules"], doc["agents"], doc["skills"]), ([], [], []))
+        self.assertNotIn("leak", json.dumps({k: v for k, v in doc.items() if k != "read_scope"}))
+        self.assertFalse({"rules", "agents", "skills"} & set(listed), listed)  # never enumerated
+        self.assertEqual(len([p for p in doc["read_scope"]["skipped_outside_scope"] if p.endswith(("rules", "agents", "skills"))]), 3)
+
     def test_a_subagent_sidecar_that_is_a_link_out_of_scope_is_not_read_when_confined(self):
         self.subagent_transcript()
         outside = write(self.base / "outside" / "real.meta.json", json.dumps({"agentType": "planted"}))

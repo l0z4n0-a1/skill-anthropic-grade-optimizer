@@ -308,7 +308,9 @@ What a run does for each selected source:
 - Hash differs, or the source has no lock entry: the snapshot and the lock entry are written. If the source already had a lock entry, its id is also recorded in `kb/pending.json`, and the previous snapshot is copied to `kb/snapshots-prev/<id>.md` if the local file existed and matched the lock. While a source is already pending, an existing previous copy is kept and no new one is made, so the diff stays against the last reviewed text. A source with no lock entry is new and is not pending.
 - Download failed: reported, the other sources are still written, and the failed source keeps its lock entry.
 
-Text output: `changed=N unchanged=N restored=N failed=N`, then one line per changed (`+`), restored (`=`) and failed (`!`) source. A line lists any source with no previous snapshot to diff against; read those whole. There is no JSON mode.
+A response that ends before its advertised `Content-Length` counts as a failed download. A source whose locator in `sources.json` changed while the bytes did not is relocated: its lock entry takes the new locator and it is not pending, since there is nothing new to read.
+
+Text output: `changed=N unchanged=N restored=N relocated=N failed=N`, then one line per changed (`+`), restored (`=`), relocated (`~`) and failed (`!`) source. A line lists any source with no previous snapshot to diff against; read those whole. There is no JSON mode.
 
 | Code | Meaning |
 |---|---|
@@ -340,14 +342,14 @@ Run it as `python -B` to avoid writing bytecode. The script also sets that flag 
 | `--reviewed` | `ID[,ID...]` or `all` | none | Take source ids or page URLs off `pending.json`. Takes no other option. |
 | `--only` | `ID[,ID...]` | all sources | Compare only these source ids. The indexes are then not checked, and pending page lists are left out of the report. |
 | `--bundled-dir` | `DIR` | none | Directory of the `claude-api` skill. Needed to compare `bundled` and `path` sources; without it they are reported under `not_checked` and counted in `not_compared`. |
-| `--max-seconds` | `N` | 600 | Time budget for all downloads. Each request's timeout is cut to what remains, and a download still running at the deadline is abandoned; a source or index not finished in time is reported as failed. Name resolution cannot be interrupted, so a run can overshoot by that much. `0` means the default. |
+| `--max-seconds` | `N` | 600 | Time budget for all downloads. Each request's timeout is cut to what remains, and a download still running at the deadline is abandoned; a source or index not finished in time is reported as failed. Name resolution and connecting cannot be interrupted, and a single read already in progress at the deadline can block until the socket timeout (at most 60 s, or what remained of the budget when the request opened, whichever is less), so a run can overshoot by that much. `0` means the default. |
 
 #### Modes
 
 - Check (default): compares and reports. Writes nothing in the repository.
 - `--apply`: the same comparison, then writes. It requires a working clone: `kb/` writable, a `.git` entry at the repository root, and a path not under `plugins/cache`. Otherwise exit 2.
 - `--apply --partial`: as `--apply`, but applies even if a source failed.
-- `--reviewed`: its own step. It runs the gate first and refuses unless the gate reports no errors and every snapshot to release exists. Then it removes the named items from `pending.json` and prints `pending left: N`. It sends nothing over the network. Combined with `--apply`, `--partial`, `--json`, `--out`, `--only`, `--bundled-dir` or `--max-seconds` it exits 2.
+- `--reviewed`: its own step. It runs the gate first and refuses unless the gate reports no errors, every snapshot to release exists, and each one's hash equals its lock entry (so a snapshot edited after download, even one no claim cites, is not released). Then it removes the named items from `pending.json`, deletes their `kb/snapshots-prev/<id>.md`, and prints `pending left: N`. It sends nothing over the network. Combined with `--apply`, `--partial`, `--json`, `--out`, `--only`, `--bundled-dir` or `--max-seconds` it exits 2.
 
 #### Two baselines
 
@@ -368,6 +370,7 @@ Only a run that gets as far as comparing emits a report. `--reviewed`, a usage e
 | `changed_sources` | list of `{id, url, claims, core_or_harness_ids, new}` | Downloaded hash differs from the lock. `url` holds the source label (url, path or `bundled:<path>`). `claims` is the number of claims citing it. `core_or_harness_ids` are those claim ids that `core.json` or `harness.json` depend on. `new` is true when the source has no lock entry. |
 | `pending` | `{sources: [{id, since, claims, core_or_harness_ids}], new_pages: [{url, since}], removed_pages: [{url, since}]}` | Fetched earlier and not yet released by `--reviewed`. With `--only`, page lists are empty and sources are filtered. |
 | `unchanged` | list of source ids | Hash equals the lock. |
+| `relocated` | list of source ids | Same bytes, new locator in `sources.json`. Counts as work to apply (exit 4 without `--apply`); `--apply` rewrites the lock entry and adds nothing to pending. |
 | `failed` | list of `{id, error}` | A source id or an index URL, with the error text. |
 | `not_checked` | list of `{id, reason}` | Sources skipped, with the reason. |
 | `not_compared` | `{sources, claims}`, integers | Bundled or local sources skipped for want of `--bundled-dir`, and the claims that rest on them. |

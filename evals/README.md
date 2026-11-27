@@ -34,9 +34,19 @@ Review the Claude Code setup whose user-level directory is
 
 The reviewer must not be able to read `ANSWER-KEY.md` or the builders. Starting
 the session elsewhere is not enough, because the loaded plugin's own directory
-holds them. Make a copy of the repository without the `evals/` directory, load
-that copy with `claude --plugin-dir <copy>`, and start the session in a
-directory that is neither the copy nor this repository. Record with each
+holds them, and a copied checkout keeps them in its git history. Export the
+plugin without git metadata and without `evals/`:
+
+```bash
+mkdir <copy>
+git archive HEAD -- . ':!evals' | tar -x -C <copy>
+```
+
+Load that copy with `claude --plugin-dir <copy>` and start the session in a
+directory that is neither the copy nor this repository. The reviewer can
+still read anything on the machine its permissions allow, this repository
+included; deny reads of it in the session's permissions (`Read(<this repo>/**)`
+under `deny`) or run the round from a machine or user without it. Record with each
 result: the commit the copy was made from, the exact model id, and how it was
 scored. Score each report against the key. A run produces three numbers: defects found
 out of ten on `planted`, false findings on `planted`, and findings presented as

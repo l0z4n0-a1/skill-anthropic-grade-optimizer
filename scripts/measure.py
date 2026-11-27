@@ -253,6 +253,18 @@ class Scan:
     def is_dir(self, path: pathlib.Path) -> bool:
         return self.allowed(path) and path.is_dir()
 
+    def find(self, folder: pathlib.Path, pattern: str, recursive: bool = False) -> list:
+        """Sorted files matching `pattern` in `folder`. A folder that resolves outside the scope is not listed at all
+        (it is recorded as skipped), and neither is a match that resolves outside it: no outside name reaches the report."""
+        if not self.is_dir(folder):
+            return []
+        try:
+            found = list((folder.rglob(pattern) if recursive else folder.glob(pattern)))
+        except OSError as exc:
+            self.unreadable.append(f"{folder}: {type(exc).__name__} while listing files")
+            return []
+        return sorted(p for p in found if self.allowed(p))
+
     def read(self, path: pathlib.Path) -> str:
         if not self.allowed(path):
             return ""
@@ -554,7 +566,7 @@ def scopes(home: pathlib.Path, project: pathlib.Path, plugin_bases: list) -> lis
 def bundled_files(folder: pathlib.Path, skill: pathlib.Path, scan: Scan) -> list:
     try:
         return [p for p in folder.rglob("*")
-                if p.is_file() and p != skill and not {".git", "__pycache__"} & set(p.relative_to(folder).parts)]
+                if not {".git", "__pycache__"} & set(p.relative_to(folder).parts) and p != skill and scan.is_file(p)]
     except OSError as exc:
         scan.unreadable.append(f"{folder}: {type(exc).__name__} while listing files")
         return []
@@ -609,16 +621,16 @@ def agent_record(agent: pathlib.Path, label: str, scan: Scan) -> dict:
 def markdown_pieces(scope_list: list, overrides: dict, scan: Scan, cap: int = LISTING_CAP) -> dict:
     kinds = {"skills": [], "agents": [], "commands": [], "rules": [], "output_styles": []}
     for label, base, root_skill in scope_list:
-        for skill in sorted((base / "skills").glob("*/SKILL.md")):
+        for skill in scan.find(base / "skills", "*/SKILL.md"):
             kinds["skills"].append(skill_record(skill, label, overrides, scan, cap))
         if root_skill:  # a plugin with SKILL.md at its root: one skill, named by `name` or else by the plugin
             kinds["skills"].append(skill_record(base / "SKILL.md", label, overrides, scan, cap, fallback_name=label[len("plugin:"):]))
-        for agent in sorted((base / "agents").rglob("*.md")):
+        for agent in scan.find(base / "agents", "*.md", recursive=True):
             record = agent_record(agent, label, scan)
             if record["frontmatter"].get("name") or record["frontmatter"].get("description"):
                 kinds["agents"].append(record)
         for kind, sub in (("commands", "commands"), ("rules", "rules"), ("output_styles", "output-styles")):
-            for path in sorted((base / sub).rglob("*.md")):
+            for path in scan.find(base / sub, "*.md", recursive=True):
                 text = scan.read(path)
                 parsed = parse_frontmatter(text)
                 meta = parsed["meta"]

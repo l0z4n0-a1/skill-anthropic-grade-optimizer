@@ -14,7 +14,9 @@ Out: kb/snapshots/<id>.md  (raw text, never committed) and kb/snapshots.lock.jso
      kb/snapshots-prev/<id>.md if the local file existed and matched the lock. A source with
      no lock entry is new and is not pending.
      A local snapshot whose hash differs from the lock is rewritten even if the remote still
-     matches the lock. Writes are by temporary file and os.replace; every download happens
+     matches the lock; a source whose bytes are unchanged but whose locator in sources.json is not the
+     one the lock records gets its lock entry rewritten (it is not pending: nothing changed to read).
+     A body shorter than its advertised Content-Length is a failed source, never a snapshot. Writes are by temporary file and os.replace; every download happens
      before anything is written, so a failure while downloading leaves the files as they were.
 Fails: exit 0 every selected source was read; 1 some source could not be read (the others are
        written, the failed ones keep their lock entry) or --list could not read its URL;
@@ -87,7 +89,9 @@ def hosts_of(urls) -> set[str]:
 def http_get(url: str, timeout: float = TIMEOUT, hosts=None, deadline=None) -> bytes:
     """GET `url`. `deadline` is an absolute time.monotonic() value: the request's timeout is cut to what is
     left of it, and a body still arriving when it passes is abandoned (TimeoutError). The socket timeout
-    alone would restart with every chunk received."""
+    alone would restart with every chunk received. A body shorter than the Content-Length the server
+    advertised is an error (the connection was cut), never a snapshot. The residual limit: a raw read
+    already in progress when the deadline passes can still block for up to the request's own timeout."""
     if deadline is not None:
         left = deadline - time.monotonic()
         if left <= 0:
@@ -97,8 +101,9 @@ def http_get(url: str, timeout: float = TIMEOUT, hosts=None, deadline=None) -> b
     opener = urllib.request.build_opener(_PinnedRedirect(hosts if hosts is not None else hosts_of([url])))
     chunks, size = [], 0
     with opener.open(req, timeout=timeout) as resp:
+        read = getattr(resp, "read1", resp.read)  # read1 does one raw read, where read(n) waits for n bytes
         while True:
-            chunk = resp.read(CHUNK)
+            chunk = read(CHUNK)
             if not chunk:
                 break
             chunks.append(chunk)
@@ -107,6 +112,13 @@ def http_get(url: str, timeout: float = TIMEOUT, hosts=None, deadline=None) -> b
                 raise OSError(f"{url} is larger than {MAX_BYTES} bytes; refusing it")
             if deadline is not None and time.monotonic() > deadline:
                 raise TimeoutError(f"time budget used up while {url} was downloading")
+        headers = getattr(resp, "headers", None)
+        try:
+            advertised = int(headers.get("Content-Length")) if headers is not None and headers.get("Content-Length") else None
+        except ValueError:
+            advertised = None
+        if advertised is not None and size < advertised:
+            raise OSError(f"{url} ended after {size} of {advertised} bytes; the connection was cut, so the body is not used")
     return b"".join(chunks)
 
 
@@ -206,14 +218,9 @@ def record_changes(kb: pathlib.Path, lock: dict, changed: list[str], new_pages=(
     pending = read_pending(kb)
     already = set(pending["sources"])
     tracked = [sid for sid in changed if sid in lock]
-    for sid in tracked:
-        pending["sources"].setdefault(sid, today)
-    for key, urls in (("new_pages", new_pages), ("removed_pages", removed_pages)):
-        for url in urls:
-            pending[key].setdefault(url, today)
-    if tracked or new_pages or removed_pages:
-        write_json(kb / "pending.json", pending)
     no_previous = []
+    # The previous copy of a new review cycle is settled before pending is published: a run cut short in between
+    # must not leave a source pending with a copy from an older cycle, which a retry would then keep.
     for sid in tracked:
         prev, local = kb / "snapshots-prev" / f"{sid}.md", kb / "snapshots" / f"{sid}.md"
         if sid in already:
@@ -226,6 +233,13 @@ def record_changes(kb: pathlib.Path, lock: dict, changed: list[str], new_pages=(
         else:
             prev.unlink(missing_ok=True)  # an older cycle's copy would be mistaken for this one's
             no_previous.append(sid)
+    for sid in tracked:
+        pending["sources"].setdefault(sid, today)
+    for key, urls in (("new_pages", new_pages), ("removed_pages", removed_pages)):
+        for url in urls:
+            pending[key].setdefault(url, today)
+    if tracked or new_pages or removed_pages:
+        write_json(kb / "pending.json", pending)
     return no_previous
 
 
@@ -264,7 +278,7 @@ def main(argv=None) -> int:
     lock = read_json(KB / "snapshots.lock.json", {})
     snap = KB / "snapshots"
     hosts = hosts_of(s["url"] for s in sources if "url" in s)
-    failed, changed, restore, same = [], {}, {}, 0
+    failed, changed, restore, relocated, same = [], {}, {}, {}, 0
 
     for src in sources:
         sid = src["id"]
@@ -278,6 +292,8 @@ def main(argv=None) -> int:
         digest = sha(body)
         if digest == lock.get(sid, {}).get("sha256"):
             local = snap / f"{sid}.md"
+            if lock[sid].get("source") != source_label(src):
+                relocated[sid] = (src, body)  # same bytes from a new locator: the lock must say where they come from now
             if local.exists() and sha(local.read_bytes()) == digest:
                 same += 1
             else:
@@ -292,12 +308,16 @@ def main(argv=None) -> int:
         lock[sid] = lock_entry(src, body, today)
     for sid, body in restore.items():
         atomic_write(snap / f"{sid}.md", body)
-    if changed:
+    for sid, (src, body) in relocated.items():
+        lock[sid] = lock_entry(src, body, today)
+    if changed or relocated:
         write_json(KB / "snapshots.lock.json", lock)
 
-    print(f"changed={len(changed)} unchanged={same} restored={len(restore)} failed={len(failed)}")
+    print(f"changed={len(changed)} unchanged={same} restored={len(restore)} relocated={len(relocated)} failed={len(failed)}")
     for sid in changed:
         print(f"  + {sid} ({lock[sid]['bytes']} bytes)")
+    for sid in relocated:
+        print(f"  ~ {sid} unchanged, but its lock entry now names the locator sources.json gives")
     for sid in restore:
         print(f"  = {sid} rewritten: the local snapshot was missing or differed from the lock")
     for f in failed:

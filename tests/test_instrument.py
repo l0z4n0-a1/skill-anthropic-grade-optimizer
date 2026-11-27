@@ -601,7 +601,7 @@ class FetchTest(unittest.TestCase):
         return self.pages[url]
 
     def lock(self, **bodies):
-        entries = {sid: {"sha256": hashlib.sha256(body).hexdigest(), "bytes": len(body), "fetched": "2026-11-01", "source": "u"}
+        entries = {sid: {"sha256": hashlib.sha256(body).hexdigest(), "bytes": len(body), "fetched": "2026-11-01", "source": {"a": self.A, "b": self.B}[sid]}
                    for sid, body in bodies.items()}
         write(self.kb / "snapshots.lock.json", json.dumps(entries))
 
@@ -698,13 +698,15 @@ class FetchTest(unittest.TestCase):
         write(self.root / "notes" / "x.md", "local notes")
         self.assertEqual(kb_fetch.read_source({"id": "n", "path": "notes/x.md"}, ""), b"local notes")
 
-    def fake_net(self, chunks, on_read=None):
-        """Replaces the opener http_get builds: it serves `chunks` one per read(), calling on_read() before each."""
+    def fake_net(self, chunks, on_read=None, length=None):
+        """Replaces the opener http_get builds: it serves `chunks` one per read(), calling on_read() before each.
+        `length` is the Content-Length header the response advertises (none by default)."""
         seen = {}
 
         class Resp:
             def __init__(self):
                 self.left = list(chunks)
+                self.headers = {} if length is None else {"Content-Length": str(length)}
 
             def read(self, n=-1):
                 if on_read:
@@ -768,6 +770,83 @@ class FetchTest(unittest.TestCase):
         self.assertFalse((self.kb / "snapshots-prev" / "a.md").exists())
         self.assertIn("no previous snapshot to diff against for a", out)
 
+    def test_http_get_rejects_a_body_that_ends_before_its_content_length(self):
+        self.fake_net([b"abcd", b"efg"], length=10)
+        with self.assertRaises(OSError) as cm:
+            self.REAL_HTTP_GET("https://docs.test/cut.md")
+        self.assertIn("ended after 7 of 10 bytes", str(cm.exception))
+        self.fake_net([b"abcd", b"efghij"], length=10)
+        self.assertEqual(self.REAL_HTTP_GET("https://docs.test/whole.md"), b"abcdefghij")
+        self.fake_net([b"abc"])  # no length advertised (chunked): nothing to compare with
+        self.assertEqual(self.REAL_HTTP_GET("https://docs.test/chunked.md"), b"abc")
+
+    def test_a_cut_download_fails_its_source_and_leaves_the_snapshot_the_lock_and_pending_alone(self):
+        self.lock(a=b"a first", b=b"b first")
+        write(self.kb / "snapshots" / "a.md", "a first")
+        before = (self.kb / "snapshots.lock.json").read_bytes()
+        self.patch(kb_fetch, "http_get", self.REAL_HTTP_GET)
+        self.fake_net([b"a sec"], length=8)
+        code, out, _ = self.fetch("--only", "a")
+        self.assertEqual(code, 1)
+        self.assertIn("! a:", out)
+        self.assertEqual(((self.kb / "snapshots.lock.json").read_bytes(), (self.kb / "snapshots" / "a.md").read_bytes(), self.pending()),
+                         (before, b"a first", None))
+
+    def test_the_same_bytes_from_a_new_locator_rewrite_the_lock_entry_and_are_not_pending(self):
+        self.lock(a=b"a first", b=b"b first")
+        write(self.kb / "snapshots" / "a.md", "a first")
+        moved = "https://docs.test/new/a.md"
+        write(self.kb / "sources.json", json.dumps([{"id": "a", "url": moved, "tier": 1, "topic": "skills"},
+                                                    {"id": "b", "url": self.B, "tier": 1, "topic": "skills"}]))
+        self.pages[moved] = b"a first"
+        code, out, _ = self.fetch()
+        self.assertEqual(code, 0, out)
+        lock = json.loads((self.kb / "snapshots.lock.json").read_text(encoding="utf-8"))
+        self.assertEqual((lock["a"]["source"], lock["b"]["source"]), (moved, self.B))
+        self.assertEqual(lock["a"]["sha256"], hashlib.sha256(b"a first").hexdigest())
+        self.assertIn("relocated=1", out)
+        self.assertIsNone(self.pending())
+        self.assertEqual(self.fetch()[1].split()[:3], ["changed=0", "unchanged=2", "restored=0"])  # and now it is settled
+
+    def test_http_get_reads_one_raw_read_at_a_time_so_the_deadline_is_looked_at_between_them(self):
+        class Resp:  # read(n) would wait for n bytes across several socket reads; read1(n) does one
+            def __init__(self):
+                self.left, self.headers = [b"abc", b"def"], {}
+
+            def read(self, n=-1):
+                raise AssertionError("read() waits for a full block")
+
+            def read1(self, n=-1):
+                return self.left.pop(0) if self.left else b""
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                return False
+        opener = types.SimpleNamespace(open=lambda req, timeout=None: Resp())
+        self.patch(kb_fetch.urllib.request, "build_opener", lambda *h: opener)
+        self.assertEqual(self.REAL_HTTP_GET("https://docs.test/x.md"), b"abcdef")
+
+    def test_the_previous_copy_is_settled_before_pending_is_published(self):
+        self.lock(a=b"a second", b=b"b first")  # v2 is the reviewed one; an older cycle left v1 in snapshots-prev
+        write(self.kb / "snapshots" / "a.md", "a second")
+        write(self.kb / "snapshots-prev" / "a.md", "a first")
+        self.pages[self.A] = b"a third"
+        real, armed = kb_fetch.os.replace, [True]
+
+        def dying(src, dst, *a, **k):
+            if armed[0] and pathlib.Path(dst).parent.name == "snapshots-prev":
+                raise OSError("killed")
+            return real(src, dst, *a, **k)
+        self.patch(kb_fetch.os, "replace", dying)
+        with self.assertRaises(OSError):
+            self.fetch("--only", "a")
+        self.assertIsNone(self.pending())  # not published, so the retry starts a clean cycle
+        armed[0] = False
+        self.fetch("--only", "a")
+        self.assertEqual((self.kb / "snapshots-prev" / "a.md").read_bytes(), b"a second")
+
     def test_a_redirect_leaves_the_known_hosts_only_with_an_error(self):
         handler = kb_fetch._PinnedRedirect({"docs.test"})
         req = urllib.request.Request("https://docs.test/a")
@@ -788,7 +867,8 @@ class UpdateTest(unittest.TestCase):
     THREE = b"- [Three](https://docs.test/three.md): z\n"
     REPORT_KEYS = {"schema_version", "lock_oldest", "lock_newest", "changed_sources", "pending", "unchanged", "failed",
                    "not_checked", "not_compared", "new_pages", "removed_pages", "no_index_baseline", "snapshot_mismatch",
-                   "unreadable_claim_lines", "incomplete", "compared", "restored_snapshots", "no_previous", "applied", "exit"}
+                   "unreadable_claim_lines", "incomplete", "compared", "restored_snapshots", "no_previous", "applied", "exit",
+                   "relocated"}
 
     @classmethod
     def page(cls, sid, version="first"):
@@ -990,6 +1070,51 @@ class UpdateTest(unittest.TestCase):
         self.assertEqual(code, 2)
         self.assertIn("no snapshot for a", err)
         self.assertEqual(list(self.pending()["sources"]), ["a"])
+
+    def test_reviewed_refuses_a_pending_source_without_claims_whose_snapshot_was_edited_here(self):
+        n_url = "https://docs.test/n.md"
+        sources = json.loads((self.kb / "sources.json").read_text(encoding="utf-8")) + [{"id": "n", "url": n_url, "tier": 1, "topic": "skills"}]
+        write(self.kb / "sources.json", json.dumps(sources))
+        lock = json.loads((self.kb / "snapshots.lock.json").read_text(encoding="utf-8"))
+        lock["n"] = {"sha256": hashlib.sha256(b"n body").hexdigest(), "bytes": 6, "fetched": "2026-11-20", "source": n_url}
+        write(self.kb / "snapshots.lock.json", json.dumps(lock))
+        write(self.kb / "pending.json", json.dumps({"sources": {"n": "2026-11-20"}}))
+        write(self.kb / "snapshots" / "n.md", "n body, edited by hand")  # no claim cites n, so the gate never hashes it
+        code, _, err = self.run_update("--reviewed", "n")
+        self.assertEqual(code, 2)
+        self.assertIn("n does not match snapshots.lock.json", err)
+        self.assertEqual(list(self.pending()["sources"]), ["n"])
+        write(self.kb / "snapshots" / "n.md", "n body")
+        self.assertEqual(self.run_update("--reviewed", "n")[0], 0)
+        self.assertEqual(self.pending()["sources"], {})
+
+    def test_reviewed_deletes_the_previous_copy_of_the_source_it_releases(self):
+        write(self.kb / "snapshots" / "a.md", self.page("a").decode("utf-8"))
+        write(self.kb / "snapshots" / "b.md", self.page("b").decode("utf-8"))
+        self.pages[self.A], self.pages[self.B] = self.page("a", "second"), self.page("b", "second")
+        self.run_update("--apply")
+        self.assertTrue((self.kb / "snapshots-prev" / "a.md").exists() and (self.kb / "snapshots-prev" / "b.md").exists())
+        self.assertEqual(self.run_update("--reviewed", "a")[0], 0)
+        self.assertFalse((self.kb / "snapshots-prev" / "a.md").exists())
+        self.assertTrue((self.kb / "snapshots-prev" / "b.md").exists())  # still pending: its diff is still wanted
+
+    def test_the_same_bytes_from_a_new_locator_are_reported_and_apply_rewrites_the_lock_entry(self):
+        moved = "https://docs.test/new/a.md"
+        sources = json.loads((self.kb / "sources.json").read_text(encoding="utf-8"))
+        sources[0]["url"] = moved
+        write(self.kb / "sources.json", json.dumps(sources))
+        self.pages[moved] = self.page("a")
+        code, report = self.report()
+        self.assertEqual((code, report["relocated"], report["changed_sources"]), (4, ["a"], []))
+        before = self.tree()
+        self.report()
+        self.assertEqual(self.tree(), before)  # reporting alone writes nothing
+        code, report = self.report("--apply")
+        lock = json.loads((self.kb / "snapshots.lock.json").read_text(encoding="utf-8"))
+        self.assertEqual((lock["a"]["source"], lock["a"]["sha256"]), (moved, hashlib.sha256(self.page("a")).hexdigest()))
+        self.assertFalse((self.kb / "pending.json").exists())
+        code, report = self.report()
+        self.assertEqual((code, report["relocated"]), (0, []))
 
     def test_options_that_do_not_go_together_are_misuse_before_any_request(self):
         for args in (["--partial"], ["--reviewed", "a", "--json"], ["--reviewed", "a", "--only", "a"], ["--reviewed", "a", "--out", "x.json"],
