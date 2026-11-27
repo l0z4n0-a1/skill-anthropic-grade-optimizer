@@ -2,6 +2,81 @@
 
 All notable changes to the anthropic-grade-optimizer skill follow [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and adhere to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.0] - 2026-11-27 - Process review, a measured knowledge base, and an update command
+
+Version 2.0 reviewed the pieces of a setup. This release adds the thing people
+build on top of them, a process that hands work between sessions, and it
+measures how far the knowledge base itself can be trusted.
+
+### Added
+- `references/process-review.md`: a fourth job, reviewing an orchestration
+  process (runner, workflow, review loop). It starts from the process's own run
+  records, has the reviewer write down what the design predicts before
+  counting, separates a symptom from its rival causes, and keeps a defect apart
+  from a cost the owner would not fix.
+- `references/foundations.md`: twelve older principles from measurement,
+  control and systems design, for what no claim covers. Each entry keeps what
+  the original says apart from what this skill takes from it, and a finding
+  that rests on one is labelled `principle: <name>`, never as Anthropic's
+  guidance.
+- `/grade-optimizer:update` (`commands/update.md`, `scripts/kb_update.py`):
+  checks how far the documentation has moved since the claims were read, safe
+  on an installed copy; in a working clone it carries the knowledge base
+  forward on a branch. A source that was fetched and not yet re-reviewed is
+  recorded in `kb/pending.json`, and `kb.py` prints a notice beside every claim
+  that rests on it until `--reviewed` clears it. Exit codes distinguish
+  "nothing changed" from "could not compare everything".
+- Knowledge base: 1,569 claims from 148 sources (was 822 from 82). New topics
+  cover verification and review loops, orchestration, the Agent SDK and
+  headless runs, mods and auto mode, platform context management, containment,
+  and coordination patterns. 35 of the new sources are Anthropic engineering
+  and research posts (tier 2).
+- Tier 3 sources: a person from Anthropic speaking in someone else's venue. A
+  tier 3 claim opens by naming the speaker and reports practice, not guidance.
+- `kb/core.json`: a `process` question, fourteen claims.
+- `evals/build_process_fixtures.py`: a planted process (ten defects) and a
+  clean one, with seeded run records so the answer key's counts are exact.
+- `scripts/kb_gate.py` warns when a claim states a number its source never
+  prints.
+
+### Changed
+- Every claim was re-read against its source by a reader from a different
+  model family than the one that extracted it, and tightened where it said
+  more than the source. All snapshots were refreshed to 2026-11-27 and the
+  claims of the 65 sources that had changed were re-read against the diffs.
+- `SKILL.md`: read a claim's quote with `kb.py cite` before a finding rests on
+  it; a claim that names a speaker is cited as that person's account.
+- `references/maintaining.md`: a fidelity rate is stated only from two readers
+  of different model families on the same sample, as the share neither
+  faulted.
+- Both fixture builders refuse an argument that looks like an option instead
+  of creating a directory with that name.
+
+### Measured
+- Fidelity: on a random sample of 60 claims, one reader faulted 7 and the other
+  passed all 60 while noting 4 close calls; no overlap, and all 11 objections
+  held against the source. 49 of 60 (82%) drew no objection from either
+  reader. The 11 were faults of scope or a dropped condition, none contrary to
+  its source, and were corrected. Assume that rate for the rest: read the
+  quote.
+- The gate passes with 0 errors and 1 warning (`skills-046`, a figure compared
+  across two pages). 59 tests pass.
+- Process guide, five blind rounds: on the planted process the last three
+  found 9, 8 and 9 of 10 defects with 0, 1 and 0 false findings; on the clean
+  one, 0 false findings in the last three rounds run. The round that scored 8
+  followed a revision of the guide, and its false finding was traced to one
+  sentence, since corrected. `evals/README.md` has the table and what each
+  round changed.
+
+### Known limits
+- `kb_update.py` has no lock against two updates at once, and its hash of an
+  HTML source ignores link targets.
+- Six bundled sources (135 claims) are compared only when `--bundled-dir` is
+  given.
+- The process guide has been run on one real process outside its fixtures,
+  and the fixtures were built by the same hands as the guide. The clean
+  fixture has one open true finding, listed in the answer key.
+
 ## [2.0.0] - 2026-11-14 - From rule engine to setup instrument
 
 Version 2 is a different tool. Claude Code now ships `/doctor prompt-audit` for

@@ -247,7 +247,7 @@ with the reason.
 
 
 def main() -> int:
-    if len(sys.argv) != 2:
+    if len(sys.argv) != 2 or sys.argv[1].startswith("-"):
         print(__doc__, file=sys.stderr)
         return 2
     out = pathlib.Path(sys.argv[1])

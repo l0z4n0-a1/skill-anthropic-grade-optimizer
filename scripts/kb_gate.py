@@ -10,6 +10,12 @@ Fails: exit 1 when any claim has a missing or invalid field, a duplicate id, an
 A quote matches when it appears in the snapshot after collapsing whitespace and
 normalising typographic quotes and dashes. Markdown markers are part of the text:
 quote the source as written, or pick a span without markup.
+
+Warns, without failing, when the claim sentence contains a number its source
+never prints: usually a sum, a percentage or a year the extractor derived. A
+warning is a claim to read again, since a claim may rightly cite a second
+source's figure. Whether a claim says what its source says is not checked here;
+references/maintaining.md gives that to a second reader.
 """
 from __future__ import annotations
 
@@ -38,6 +44,26 @@ def norm(text: str) -> str:
     return re.sub(r"\s+", " ", text.translate(_TRANS)).strip()
 
 
+_NUMBER = re.compile(r"(?<![\w.])\$?\d[\d,]*(?:\.\d+)?(?:[kKmM]|%|x)?(?!\w)")
+_MODEL_ID = re.compile(r"claude-[a-z]+-\d+(?:-\d+)?")
+_WORDS = dict(zip("0 1 2 3 4 5 6 7 8 9 10 11 12".split(),
+                  "zero one two three four five six seven eight nine ten eleven twelve".split()))
+
+
+def numbers_not_in_source(claim: str, snapshot: str) -> list[str]:
+    """Numbers in the claim sentence that the snapshot prints neither as digits nor, up to twelve, as a word."""
+    plain = snapshot.replace(",", "").lower()
+    absent = []
+    for found in _NUMBER.finditer(_MODEL_ID.sub("", claim)):
+        core = found.group(0).replace(",", "").lstrip("$").rstrip("%xkKmM")
+        if not core or re.search(rf"(?<![\d.]){re.escape(core)}(?!\d)", plain):
+            continue
+        if core in _WORDS and re.search(rf"\b{_WORDS[core]}\b", plain):
+            continue
+        absent.append(found.group(0))
+    return absent
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--json", action="store_true")
@@ -51,6 +77,7 @@ def main() -> int:
     snaps: dict[str, str] = {}
     seen: dict[str, str] = {}
     errors: list[str] = []
+    warnings: list[str] = []
     missing_snap: set[str] = set()
     stale_snap: set[str] = set()
     lock_file = KB / "snapshots.lock.json"
@@ -104,6 +131,9 @@ def main() -> int:
             if norm(c["quote"]) not in snaps[c["source"]]:
                 errors.append(f"{where} {cid} quote not in {c['source']}: {c['quote'][:70]!r}")
                 continue
+            absent = numbers_not_in_source(str(c["claim"]), snaps[c["source"]])
+            if absent:
+                warnings.append(f"{where} {cid} claim has a number {c['source']} does not print: {', '.join(absent)}")
             ok += 1
         report[path.name] = ok
         if ok == 0 and not any(path.name in e for e in errors) and not missing_snap:
@@ -115,13 +145,17 @@ def main() -> int:
         errors.append("no claims were checked; an empty knowledge base is not a pass")
 
     if args.json:
-        print(json.dumps({"ok": report, "errors": errors, "missing_snapshots": sorted(missing_snap)}, indent=2))
+        print(json.dumps({"ok": report, "errors": errors, "warnings": warnings,
+                          "missing_snapshots": sorted(missing_snap)}, indent=2))
     else:
         for name, ok in report.items():
             print(f"{name}: {ok} claims verified")
-        print(f"total verified={sum(report.values())} errors={len(errors)} missing_snapshots={len(missing_snap)}")
+        print(f"total verified={sum(report.values())} errors={len(errors)} missing_snapshots={len(missing_snap)} "
+              f"warnings={len(warnings)}")
         for e in errors:
             print("  x", e)
+        for w in warnings:
+            print("  !", w)
         for m in sorted(missing_snap):
             print("  ? no snapshot for", m)
     if errors:

@@ -66,6 +66,11 @@ with the clearer reason. When two sources disagree, or a source contradicts
 itself, keep both claims and say so in each `why`: a disagreement between official
 sources is itself something the auditor must know.
 
+A number in a claim is one the source prints. Do not add up a table, turn two
+figures into a percentage, or supply a year the page does not give: a derived
+number passes the quote check and is still yours, not the source's. If the
+arithmetic matters, state the source's figures and let the reader do it.
+
 Record what the source says, including when it surprises you. Your memory of how
 Claude Code or a model behaves may be older than the snapshot; where they differ,
 the snapshot is the evidence.

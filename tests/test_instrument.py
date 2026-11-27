@@ -3,18 +3,24 @@
 Each test builds a small setup or knowledge base in a temporary directory, so the
 suite never reads the developer's own ~/.claude. Run: python -m unittest discover tests
 """
+import contextlib
 import datetime as dt
+import hashlib
+import io
 import json
 import pathlib
 import subprocess
 import sys
 import tempfile
 import unittest
+import urllib.error
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
+import kb_fetch  # noqa: E402
 import kb_gate  # noqa: E402
+import kb_update  # noqa: E402
 import measure  # noqa: E402
 
 
@@ -438,6 +444,19 @@ class GateTest(unittest.TestCase):
         self.assertEqual(self.run_gate(dict(self.GOOD, quote=" " * 30))[0], 1)
         self.assertEqual(self.run_gate(dict(self.GOOD, quote="- " * 20))[0], 1)
 
+    def test_a_number_the_source_does_not_print_is_a_warning(self):
+        code, report = self.run_gate(dict(self.GOOD, claim="The listing cap is 1,536 characters, about 3 times the old one."))
+        self.assertEqual(code, 0)
+        self.assertEqual(len(report["warnings"]), 1)
+        self.assertIn("3", report["warnings"][0])
+        self.assertNotIn("1,536", report["warnings"][0])
+        printed = dict(self.GOOD, claim="The cap is 1536 characters across 2 docs.")
+        self.assertEqual(self.run_gate(printed, snapshot="The cap is 1,536 characters in the skill listing, in two docs.")[1]["warnings"], [])
+        ranged = dict(self.GOOD, claim="On claude-opus-5-5 a 1,000-1,536 character cap holds.")
+        self.assertEqual(self.run_gate(ranged, snapshot="The cap is 1,000 to 1,536 characters in the skill listing.")[1]["warnings"], [])
+        part_of_another = dict(self.GOOD, claim="The cap is 536 characters.")
+        self.assertEqual(len(self.run_gate(part_of_another)[1]["warnings"]), 1)
+
     def test_an_empty_knowledge_base_is_not_a_pass(self):
         with tempfile.TemporaryDirectory() as tmp:
             kb = pathlib.Path(tmp)
@@ -457,6 +476,284 @@ class GateTest(unittest.TestCase):
         code, report = self.run_gate(self.GOOD, snapshot=None)
         self.assertEqual(code, 2)
         self.assertEqual(report["missing_snapshots"], ["src"])
+
+
+class UpdateTest(unittest.TestCase):
+    """kb_update.py against a temporary kb/ and a dict standing in for the network."""
+
+    A, B, IDX = "https://docs.test/a.md", "https://docs.test/b.md", "https://docs.test/llms.txt"
+    PAGES = {A: b"page a, first version", B: b"page b, first version",
+             IDX: b"- [One](https://docs.test/one.md): x\n- [Two](https://docs.test/two.md): y\n"}
+    THREE = b"- [Three](https://docs.test/three.md): z\n"
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.root = pathlib.Path(tmp.name) / "repo"
+        self.kb = self.root / "kb"
+        (self.root / ".git").mkdir(parents=True)
+        write(self.kb / "sources.json", json.dumps([{"id": "a", "url": self.A}, {"id": "b", "url": self.B},
+                                                    {"id": "bd", "bundled": "shared/x.md"}]))
+        write(self.kb / "claims" / "c.jsonl", "".join(json.dumps({"id": i, "source": s}) + "\n"
+                                                      for i, s in (("a-1", "a"), ("a-2", "a"), ("b-1", "b"), ("bd-1", "bd"))))
+        write(self.kb / "core.json", json.dumps({"q": {"principle": "p", "claims": ["a-1"]}}))
+        write(self.kb / "harness.json", json.dumps({"_about": "x"}))
+        sha = lambda body: hashlib.sha256(body).hexdigest()  # noqa: E731
+        write(self.kb / "snapshots.lock.json", json.dumps({
+            "a": {"sha256": sha(self.PAGES[self.A]), "bytes": 1, "fetched": "2026-11-01", "source": self.A},
+            "b": {"sha256": sha(self.PAGES[self.B]), "bytes": 1, "fetched": "2026-11-10", "source": self.B}}))
+        write(self.kb / "index.lock.json", json.dumps({self.IDX: ["https://docs.test/one.md", "https://docs.test/two.md"]}))
+        self.pages, self.asked = dict(self.PAGES), []
+        saved = (kb_update.KB, kb_update.INDEXES, kb_fetch.http_get, kb_update.kb_writable)
+        self.addCleanup(lambda: (setattr(kb_update, "KB", saved[0]), setattr(kb_update, "INDEXES", saved[1]),
+                                 setattr(kb_fetch, "http_get", saved[2]), setattr(kb_update, "kb_writable", saved[3])))
+        kb_update.KB, kb_update.INDEXES = self.kb, (self.IDX,)
+        kb_fetch.http_get = self.fake_get
+
+    def fake_get(self, url, timeout=60):
+        self.asked.append(url)
+        if url not in self.pages:
+            raise urllib.error.URLError(f"no route to {url}")
+        return self.pages[url]
+
+    def tree(self):
+        return {str(p.relative_to(self.root)): p.read_bytes() for p in self.root.rglob("*") if p.is_file()}
+
+    def run_update(self, *args):
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            code = kb_update.main(list(args))
+        return code, out.getvalue(), err.getvalue()
+
+    def report(self, *args):
+        code, out, _ = self.run_update("--json", *args)
+        return code, json.loads(out)
+
+    def test_nothing_changed_is_exit_0_and_writes_nothing(self):
+        before = self.tree()
+        code, report = self.report()
+        self.assertEqual(code, 0)
+        self.assertEqual((report["unchanged"], report["changed_sources"], report["new_pages"], report["incomplete"]),
+                         (["a", "b"], [], [], []))
+        self.assertEqual((report["lock_oldest"], report["lock_newest"]), ("2026-11-01", "2026-11-10"))
+        self.assertEqual([n["id"] for n in report["not_checked"]], ["bd"])
+        self.assertEqual(report["not_compared"], {"sources": 1, "claims": 1})
+        self.assertIn("1 bundled or local sources, 1 claims", self.run_update()[1])
+        self.assertEqual(self.tree(), before)
+
+    def test_a_changed_source_is_exit_3_with_its_claims_and_core_ids(self):
+        self.pages[self.A] = b"page a, second version"
+        code, report = self.report()
+        self.assertEqual(code, 3)
+        self.assertEqual(report["changed_sources"], [{"id": "a", "url": self.A, "claims": 2,
+                                                      "core_or_harness_ids": ["a-1"], "new": False}])
+        self.assertEqual(report["unchanged"], ["b"])
+        self.assertIn("2 claims depend on it; in core/harness: a-1", self.run_update()[1])
+
+    def test_new_index_page_is_listed_and_no_baseline_lists_nothing(self):
+        self.pages[self.IDX] += self.THREE
+        code, report = self.report()
+        self.assertEqual(code, 3)
+        self.assertEqual(report["new_pages"], [{"index": self.IDX, "url": "https://docs.test/three.md"}])
+        (self.kb / "index.lock.json").unlink()
+        code, report = self.report()
+        self.assertEqual((code, report["new_pages"], report["no_index_baseline"]), (4, [], [self.IDX]))
+        self.assertIn("no index baseline", self.run_update()[1])
+
+    def test_a_removed_page_is_work(self):
+        self.pages[self.IDX] = b"- [One](https://docs.test/one.md): x\n"
+        code, report = self.report()
+        self.assertEqual((code, report["removed_pages"]), (3, [{"index": self.IDX, "url": "https://docs.test/two.md"}]))
+
+    def test_a_failed_download_is_listed_and_the_rest_still_run(self):
+        del self.pages[self.A]
+        code, report = self.report()
+        self.assertEqual((code, [f["id"] for f in report["failed"]], report["unchanged"]), (4, ["a"], ["b"]))
+        self.assertIn("no route", report["failed"][0]["erro"])
+        self.assertIn("failed to download", report["incomplete"][0])
+        self.pages[self.B] = b"page b, second version"
+        code, report = self.report()
+        self.assertEqual((code, [c["id"] for c in report["changed_sources"]]), (3, ["b"]))
+        self.pages.clear()
+        self.assertEqual(self.run_update()[0], 1)
+
+    def test_apply_writes_snapshot_and_locks_and_the_default_mode_does_not(self):
+        self.pages[self.A] = b"page a, second version"
+        self.pages[self.IDX] += self.THREE
+        before = self.tree()
+        self.assertEqual(self.run_update()[0], 3)
+        self.assertEqual(self.tree(), before)
+        code, out, _ = self.run_update("--apply")
+        self.assertEqual(code, 3)
+        self.assertIn("python scripts/kb_gate.py", out)
+        self.assertEqual((self.kb / "snapshots" / "a.md").read_bytes(), b"page a, second version")
+        lock = json.loads((self.kb / "snapshots.lock.json").read_text(encoding="utf-8"))
+        self.assertEqual(lock["a"]["sha256"], hashlib.sha256(b"page a, second version").hexdigest())
+        self.assertEqual(lock["a"]["fetched"], dt.date.today().isoformat())
+        self.assertEqual(lock["b"]["fetched"], "2026-11-10")
+        index = json.loads((self.kb / "index.lock.json").read_text(encoding="utf-8"))
+        self.assertIn("https://docs.test/three.md", index[self.IDX])
+
+    def test_what_apply_downloaded_stays_pending_until_reviewed(self):
+        self.pages[self.A] = b"page a, second version"
+        self.pages[self.IDX] += self.THREE
+        self.run_update("--apply")
+        code, report = self.report()  # today's bytes now match the lock; the work is still not done
+        self.assertEqual((code, report["changed_sources"], report["new_pages"]), (3, [], []))
+        self.assertEqual([(p["id"], p["claims"], p["core_or_harness_ids"]) for p in report["pending"]["sources"]],
+                         [("a", 2, ["a-1"])])
+        self.assertEqual([p["url"] for p in report["pending"]["new_pages"]], ["https://docs.test/three.md"])
+        self.assertIn("pending since", self.run_update()[1])
+        self.assertEqual(self.run_update("--reviewed", "nope")[0], 2)
+        self.assertEqual(self.run_update("--reviewed", "a")[0], 0)
+        self.assertEqual(self.report()[0], 3)
+        self.assertEqual(self.run_update("--reviewed", "https://docs.test/three.md")[0], 0)
+        self.assertEqual(self.report()[0], 0)
+        self.run_update("--apply")
+        self.pages[self.B] = b"page b, second version"
+        self.run_update("--apply")
+        self.assertEqual(self.run_update("--reviewed", "all")[0], 0)
+        self.assertEqual(self.report()[0], 0)
+
+    def test_apply_keeps_the_last_reviewed_snapshot_while_the_source_is_pending(self):
+        write(self.kb / "snapshots" / "a.md", self.PAGES[self.A].decode())
+        self.pages[self.A] = b"page a, second version"
+        self.run_update("--apply")
+        prev = self.kb / "snapshots-prev" / "a.md"
+        self.assertEqual(prev.read_bytes(), b"page a, first version")
+        self.pages[self.A] = b"page a, third version"
+        self.run_update("--apply")
+        self.assertEqual((prev.read_bytes(), (self.kb / "snapshots" / "a.md").read_bytes()),
+                         (b"page a, first version", b"page a, third version"))
+        self.run_update("--reviewed", "a")
+        self.pages[self.A] = b"page a, fourth version"
+        self.run_update("--apply")
+        self.assertEqual(prev.read_bytes(), b"page a, third version")
+
+    def test_apply_refuses_when_kb_is_not_writable(self):
+        self.pages[self.A] = b"page a, second version"
+        kb_update.kb_writable = lambda: False
+        before = self.tree()
+        code, out, err = self.run_update("--apply")
+        self.assertEqual(code, 2)
+        self.assertIn("not writable", err)
+        self.assertEqual((out, self.asked, self.tree()), ("", [], before))
+        self.assertEqual(self.run_update("--reviewed", "all")[0], 2)
+
+    def test_apply_refuses_outside_a_working_clone(self):
+        (self.root / ".git").rmdir()
+        code, out, err = self.run_update("--apply")
+        self.assertEqual((code, out, self.asked), (2, "", []))
+        self.assertIn("no .git", err)
+        cache = pathlib.Path(self.root.parent) / "plugins" / "cache" / "p"
+        (cache / ".git").mkdir(parents=True)
+        write(cache / "kb" / "sources.json", "[]")
+        kb_update.KB = cache / "kb"
+        code, _, err = self.run_update("--apply")
+        self.assertEqual(code, 2)
+        self.assertIn("plugin cache", err)
+
+    def test_apply_applies_nothing_when_a_source_failed_unless_partial(self):
+        del self.pages[self.A]
+        self.pages[self.B] = b"page b, second version"
+        before = self.tree()
+        code, out, err = self.run_update("--apply")
+        self.assertEqual((code, self.tree()), (3, before))
+        self.assertIn("nothing applied", err)
+        self.assertNotIn("next:", out)
+        self.run_update("--apply", "--partial")
+        lock = json.loads((self.kb / "snapshots.lock.json").read_text(encoding="utf-8"))
+        self.assertEqual(lock["a"]["fetched"], "2026-11-01")
+        self.assertEqual(lock["b"]["fetched"], dt.date.today().isoformat())
+        self.assertEqual(list(json.loads((self.kb / "pending.json").read_text(encoding="utf-8"))["sources"]), ["b"])
+
+    def test_a_local_snapshot_that_differs_from_the_lock_is_restored_by_apply(self):
+        write(self.kb / "snapshots" / "a.md", "tampered")
+        code, report = self.report()
+        self.assertEqual((code, report["snapshot_mismatch"]), (4, ["a"]))
+        self.run_update("--apply")
+        self.assertEqual((self.kb / "snapshots" / "a.md").read_bytes(), self.PAGES[self.A])
+        self.assertEqual((self.kb / "snapshots" / "b.md").read_bytes(), self.PAGES[self.B])
+        self.assertEqual(self.report()[0], 0)
+
+    def test_an_index_that_parses_to_nothing_or_too_little_is_not_accepted(self):
+        self.pages[self.IDX] = b"<html>maintenance</html>"
+        code, report = self.report()
+        self.assertEqual((code, [f["id"] for f in report["failed"]]), (4, [self.IDX]))
+        self.assertIn("0 urls", report["failed"][0]["erro"])
+        self.pages[self.IDX] = b"- [One](https://docs.test/one.md): x\n"
+        write(self.kb / "index.lock.json", json.dumps({self.IDX: [f"https://docs.test/{n}.md" for n in "abcd"]}))
+        self.assertEqual(self.report()[1]["failed"][0]["id"], self.IDX)
+        index_lock = (self.kb / "index.lock.json").read_bytes()
+        self.run_update("--apply", "--partial")
+        self.assertEqual((self.kb / "index.lock.json").read_bytes(), index_lock)
+
+    def test_an_unknown_only_id_is_a_usage_error_before_any_download(self):
+        self.assertEqual(self.run_update("--only", "a,nope")[0], 2)
+        self.assertEqual(self.asked, [])
+
+    def test_out_must_be_outside_the_plugin(self):
+        inside = self.kb / "report.json"
+        code, _, err = self.run_update("--out", str(inside))
+        self.assertEqual((code, inside.exists(), self.asked), (2, False, []))
+        outside = self.root.parent / "elsewhere" / "report.json"
+        self.assertEqual(self.run_update("--out", str(outside))[0], 0)
+        self.assertEqual(json.loads(outside.read_text(encoding="utf-8"))["exit"], 0)
+
+    def test_an_unreadable_claim_line_makes_the_check_incomplete(self):
+        write(self.kb / "claims" / "bad.jsonl", "{not json\n")
+        code, report = self.report()
+        self.assertEqual((code, report["unreadable_claim_lines"]), (4, 1))
+
+    def test_a_write_that_fails_leaves_the_old_file_and_no_temporary(self):
+        self.pages[self.A] = b"page a, second version"
+        lock = (self.kb / "snapshots.lock.json").read_bytes()
+        real = kb_update.os.replace
+
+        def failing(src, dst, *a, **k):
+            if pathlib.Path(dst).name == "snapshots.lock.json":
+                raise OSError("disk full")
+            return real(src, dst, *a, **k)
+        kb_update.os.replace = failing
+        try:
+            with self.assertRaises(OSError):
+                self.run_update("--apply")
+        finally:
+            kb_update.os.replace = real
+        self.assertEqual((self.kb / "snapshots.lock.json").read_bytes(), lock)
+        self.assertEqual([p.name for p in self.kb.rglob("*.tmp")], [])
+        self.assertEqual(self.report()[0], 3)
+
+    def test_only_limits_the_sources_and_skips_the_indexes(self):
+        self.run_update("--only", "b")
+        self.assertEqual(self.asked, [self.B])
+
+    def test_the_query_script_marks_claims_whose_source_is_pending(self):
+        import kb as kb_query
+        write(self.kb / "claims" / "c.jsonl", json.dumps({
+            "id": "a-1", "topic": "skills", "kind": "fact", "applies_to": ["all"], "claim": "A claim.", "why": "w",
+            "check": "k", "quote": "q", "source": "a"}) + "\n")
+        write(self.kb / "pending.json", json.dumps({"sources": {"a": "2026-11-27"}}))
+        old_kb, old_argv = kb_query.KB, sys.argv
+        kb_query.KB = self.kb
+
+        def query(*argv):
+            sys.argv = ["kb.py", *argv]
+            raw = io.BytesIO()
+            text = io.TextIOWrapper(raw, encoding="utf-8")
+            with contextlib.redirect_stdout(text):
+                code = kb_query.main()
+            text.flush()
+            return code, raw.getvalue().decode("utf-8")
+        try:
+            for argv in (["cite", "a-1"], ["show", "skills", "--brief"]):
+                code, out = query(*argv)
+                self.assertEqual(code, 0)
+                self.assertIn("[source changed on 2026-11-27; claim not re-reviewed]", out)
+            (self.kb / "pending.json").unlink()
+            self.assertNotIn("not re-reviewed", query("cite", "a-1")[1])
+        finally:
+            kb_query.KB, sys.argv = old_kb, old_argv
 
 
 class RepositoryKnowledgeBaseTest(unittest.TestCase):

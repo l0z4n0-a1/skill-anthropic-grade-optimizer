@@ -17,8 +17,9 @@ Usage:
 `show` prints claims that apply to every model plus, with --model, those tied to
 that model. Claims tied only to other models are left out.
 
-In:  kb/claims/*.jsonl, kb/core.json, kb/sources.json, kb/snapshots.lock.json
-Out: text on stdout. Exit 1 when the selection is empty or an id is unknown.
+In:  kb/claims/*.jsonl, kb/core.json, kb/sources.json, kb/snapshots.lock.json, kb/pending.json
+Out: text on stdout; a claim whose source changed and was not yet re-reviewed carries a note saying so.
+     Exit 1 when the selection is empty or an id is unknown.
 """
 from __future__ import annotations
 
@@ -55,11 +56,19 @@ def applies(claim: dict, model: str) -> bool:
     return bool(scope & GENERAL) or bool(scope & {m for m in model.split(",") if m})
 
 
+def pending_sources() -> dict:
+    """source id -> date its snapshot changed and its claims were not re-reviewed (kb/pending.json, written by kb_update.py)."""
+    path = KB / "pending.json"
+    return json.loads(path.read_text(encoding="utf-8")).get("sources", {}) if path.exists() else {}
+
+
 def line(claim: dict, quotes: bool, brief: bool = False) -> str:
     scope = "" if set(claim["applies_to"]) & GENERAL else f" [{', '.join(claim['applies_to'])}]"
+    since = pending_sources().get(claim["source"])
+    note = f" [source changed on {since}; claim not re-reviewed]" if since else ""
     if brief:
-        return f"{claim['id']}{scope}: {claim['claim']}"
-    text = f"{claim['id']} ({claim['kind']}){scope}: {claim['claim']}\n    why: {claim['why']}\n    check: {claim['check']}"
+        return f"{claim['id']}{scope}: {claim['claim']}{note}"
+    text = f"{claim['id']} ({claim['kind']}){scope}: {claim['claim']}{note}\n    why: {claim['why']}\n    check: {claim['check']}"
     return text + (f"\n    quote: \"{claim['quote']}\"\n    source: {source_ref(claim['source'])}" if quotes else "")
 
 

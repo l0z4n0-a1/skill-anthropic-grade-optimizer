@@ -490,5 +490,401 @@
     "url": "https://code.claude.com/docs/en/plugins/publish.md",
     "tier": 1,
     "topic": "plugins"
+  },
+  {
+    "id": "cc-plugins-mods-overview",
+    "url": "https://code.claude.com/docs/en/plugins/mods/overview.md",
+    "tier": 1,
+    "topic": "plugins"
+  },
+  {
+    "id": "cc-plugins-mods-reference",
+    "url": "https://code.claude.com/docs/en/plugins/mods/reference.md",
+    "tier": 1,
+    "topic": "plugins"
+  },
+  {
+    "id": "cc-plugins-mods-events",
+    "url": "https://code.claude.com/docs/en/plugins/mods/events.md",
+    "tier": 1,
+    "topic": "plugins"
+  },
+  {
+    "id": "cc-plugins-mods-api",
+    "url": "https://code.claude.com/docs/en/plugins/mods/api.md",
+    "tier": 1,
+    "topic": "plugins"
+  },
+  {
+    "id": "cc-plugins-mods-admin",
+    "url": "https://code.claude.com/docs/en/plugins/mods/admin.md",
+    "tier": 1,
+    "topic": "plugins"
+  },
+  {
+    "id": "cc-plugins-mods-create",
+    "url": "https://code.claude.com/docs/en/plugins/mods/create.md",
+    "tier": 1,
+    "topic": "plugins"
+  },
+  {
+    "id": "cc-plugins-security",
+    "url": "https://code.claude.com/docs/en/plugins/security.md",
+    "tier": 1,
+    "topic": "plugins"
+  },
+  {
+    "id": "cc-plugins-loading",
+    "url": "https://code.claude.com/docs/en/plugins/loading.md",
+    "tier": 1,
+    "topic": "plugins"
+  },
+  {
+    "id": "cc-worktrees",
+    "url": "https://code.claude.com/docs/en/worktrees.md",
+    "tier": 1,
+    "topic": "orchestration"
+  },
+  {
+    "id": "cc-routines",
+    "url": "https://code.claude.com/docs/en/routines.md",
+    "tier": 1,
+    "topic": "orchestration"
+  },
+  {
+    "id": "cc-cross-session-messaging",
+    "url": "https://code.claude.com/docs/en/cross-session-messaging.md",
+    "tier": 1,
+    "topic": "orchestration"
+  },
+  {
+    "id": "cc-agent-view",
+    "url": "https://code.claude.com/docs/en/agent-view.md",
+    "tier": 1,
+    "topic": "orchestration"
+  },
+  {
+    "id": "cc-channels",
+    "url": "https://code.claude.com/docs/en/channels.md",
+    "tier": 1,
+    "topic": "harness"
+  },
+  {
+    "id": "cc-cli-reference",
+    "url": "https://code.claude.com/docs/en/cli-reference.md",
+    "tier": 1,
+    "topic": "harness"
+  },
+  {
+    "id": "cc-auto-mode-config",
+    "url": "https://code.claude.com/docs/en/auto-mode-config.md",
+    "tier": 1,
+    "topic": "settings"
+  },
+  {
+    "id": "sdk-agent-loop",
+    "url": "https://code.claude.com/docs/en/agent-sdk/agent-loop.md",
+    "tier": 1,
+    "topic": "harness"
+  },
+  {
+    "id": "sdk-subagents",
+    "url": "https://code.claude.com/docs/en/agent-sdk/subagents.md",
+    "tier": 1,
+    "topic": "subagents"
+  },
+  {
+    "id": "sdk-hooks",
+    "url": "https://code.claude.com/docs/en/agent-sdk/hooks.md",
+    "tier": 1,
+    "topic": "hooks"
+  },
+  {
+    "id": "sdk-sessions",
+    "url": "https://code.claude.com/docs/en/agent-sdk/sessions.md",
+    "tier": 1,
+    "topic": "harness"
+  },
+  {
+    "id": "sdk-modifying-system-prompts",
+    "url": "https://code.claude.com/docs/en/agent-sdk/modifying-system-prompts.md",
+    "tier": 1,
+    "topic": "prompting"
+  },
+  {
+    "id": "sdk-claude-code-features",
+    "url": "https://code.claude.com/docs/en/agent-sdk/claude-code-features.md",
+    "tier": 1,
+    "topic": "harness"
+  },
+  {
+    "id": "sdk-cost-tracking",
+    "url": "https://code.claude.com/docs/en/agent-sdk/cost-tracking.md",
+    "tier": 1,
+    "topic": "cost"
+  },
+  {
+    "id": "pl-managed-agents-overview",
+    "url": "https://platform.claude.com/docs/en/managed-agents/overview.md",
+    "tier": 1,
+    "topic": "orchestration"
+  },
+  {
+    "id": "pl-managed-agents-multiagent-orchestration",
+    "url": "https://platform.claude.com/docs/en/managed-agents/multiagent-orchestration.md",
+    "tier": 1,
+    "topic": "orchestration"
+  },
+  {
+    "id": "pl-managed-agents-define-outcomes",
+    "url": "https://platform.claude.com/docs/en/managed-agents/define-outcomes.md",
+    "tier": 1,
+    "topic": "evals"
+  },
+  {
+    "id": "pl-managed-agents-memory",
+    "url": "https://platform.claude.com/docs/en/managed-agents/memory.md",
+    "tier": 1,
+    "topic": "context"
+  },
+  {
+    "id": "pl-build-with-claude-compaction",
+    "url": "https://platform.claude.com/docs/en/build-with-claude/compaction.md",
+    "tier": 1,
+    "topic": "context"
+  },
+  {
+    "id": "pl-build-with-claude-context-editing",
+    "url": "https://platform.claude.com/docs/en/build-with-claude/context-editing.md",
+    "tier": 1,
+    "topic": "context"
+  },
+  {
+    "id": "pl-tool-use-memory-tool",
+    "url": "https://platform.claude.com/docs/en/agents-and-tools/tool-use/memory-tool.md",
+    "tier": 1,
+    "topic": "context"
+  },
+  {
+    "id": "pl-build-with-claude-mid-conversation-effort-example",
+    "url": "https://platform.claude.com/docs/en/build-with-claude/mid-conversation-effort-example.md",
+    "tier": 1,
+    "topic": "orchestration"
+  },
+  {
+    "id": "eng-demystifying-evals-for-ai-agents",
+    "url": "https://www.anthropic.com/engineering/demystifying-evals-for-ai-agents",
+    "tier": 2,
+    "topic": "evals"
+  },
+  {
+    "id": "eng-harness-design-long-running-apps",
+    "url": "https://www.anthropic.com/engineering/harness-design-long-running-apps",
+    "tier": 2,
+    "topic": "orchestration"
+  },
+  {
+    "id": "eng-building-c-compiler",
+    "url": "https://www.anthropic.com/engineering/building-c-compiler",
+    "tier": 2,
+    "topic": "orchestration"
+  },
+  {
+    "id": "eng-claude-code-auto-mode",
+    "url": "https://www.anthropic.com/engineering/claude-code-auto-mode",
+    "tier": 2,
+    "topic": "harness"
+  },
+  {
+    "id": "eng-managed-agents",
+    "url": "https://www.anthropic.com/engineering/managed-agents",
+    "tier": 2,
+    "topic": "orchestration"
+  },
+  {
+    "id": "eng-april-23-postmortem",
+    "url": "https://www.anthropic.com/engineering/april-23-postmortem",
+    "tier": 2,
+    "topic": "harness"
+  },
+  {
+    "id": "res-components-of-agent-memory",
+    "url": "https://www.anthropic.com/research/components-of-agent-memory",
+    "tier": 2,
+    "topic": "context"
+  },
+  {
+    "id": "res-long-running-claude",
+    "url": "https://www.anthropic.com/research/long-running-claude",
+    "tier": 2,
+    "topic": "orchestration"
+  },
+  {
+    "id": "res-agents-judgment-calls",
+    "url": "https://www.anthropic.com/research/agents-judgment-calls",
+    "tier": 2,
+    "topic": "orchestration"
+  },
+  {
+    "id": "blog-building-multi-agent-systems",
+    "url": "https://claude.com/blog/building-multi-agent-systems-when-and-how-to-use-them",
+    "tier": 2,
+    "topic": "orchestration"
+  },
+  {
+    "id": "blog-dynamic-workflows",
+    "url": "https://claude.com/blog/a-harness-for-every-task-dynamic-workflows-in-claude-code",
+    "tier": 2,
+    "topic": "orchestration"
+  },
+  {
+    "id": "blog-verification-loops-with-skills",
+    "url": "https://claude.com/blog/building-verification-loops-in-claude-code-with-skills",
+    "tier": 2,
+    "topic": "evals"
+  },
+  {
+    "id": "dev-new-rules-of-context-engineering",
+    "url": "https://claude.dev/blog/the-new-rules-of-context-engineering-for-claude-5-generation-models/",
+    "tier": 2,
+    "topic": "context"
+  },
+  {
+    "id": "dev-claude-code-team-verification",
+    "url": "https://claude.dev/blog/how-the-claude-code-team-thinks-about-verification/",
+    "tier": 2,
+    "topic": "evals"
+  },
+  {
+    "id": "dev-scaling-multi-agent-teams",
+    "url": "https://claude.dev/blog/safely-scaling-multi-agent-teams-with-fable-5-2/",
+    "tier": 2,
+    "topic": "orchestration"
+  },
+  {
+    "id": "dev-eval-design-and-hillclimbing",
+    "url": "https://claude.dev/blog/automating-eval-design-and-hillclimbing/",
+    "tier": 2,
+    "topic": "evals"
+  },
+  {
+    "id": "dev-effective-agent-automations",
+    "url": "https://claude.dev/blog/building-effective-agent-automations/",
+    "tier": 2,
+    "topic": "orchestration"
+  },
+  {
+    "id": "dev-getting-started-with-mods",
+    "url": "https://claude.dev/blog/getting-started-with-claude-code-mods/",
+    "tier": 2,
+    "topic": "plugins"
+  },
+  {
+    "id": "dev-how-we-use-skills",
+    "url": "https://claude.dev/blog/lessons-from-building-claude-code-how-we-use-skills/",
+    "tier": 2,
+    "topic": "skills"
+  },
+  {
+    "id": "dev-spending-your-effort",
+    "url": "https://claude.dev/blog/spending-your-effort/",
+    "tier": 2,
+    "topic": "cost"
+  },
+  {
+    "id": "dev-solving-code-review",
+    "url": "https://claude.dev/blog/solving-code-review-at-anthropic/",
+    "tier": 2,
+    "topic": "evals"
+  },
+  {
+    "id": "dev-which-model-to-build-with",
+    "url": "https://claude.dev/blog/which-claude-model-should-you-build-with/",
+    "tier": 2,
+    "topic": "model"
+  },
+  {
+    "id": "gh-single-agent-loop-kit",
+    "url": "https://raw.githubusercontent.com/anthropics/single-agent-loop-kit/HEAD/README.md",
+    "tier": 2,
+    "topic": "orchestration"
+  },
+  {
+    "id": "res-securing-coding-agents",
+    "url": "https://claude.com/resources/articles/enterprise-guide-to-securing-coding-agents",
+    "tier": 2,
+    "topic": "security"
+  },
+  {
+    "id": "res-fold-subagents",
+    "url": "https://claude.com/resources/articles/building-agents-when-to-fold-subagents-into-your-main-agent-loop",
+    "tier": 2,
+    "topic": "orchestration"
+  },
+  {
+    "id": "res-how-we-contain-claude",
+    "url": "https://www.anthropic.com/research/how-we-contain-claude",
+    "tier": 2,
+    "topic": "security"
+  },
+  {
+    "id": "dev-prompt-caching-is-everything",
+    "url": "https://claude.dev/blog/lessons-from-building-claude-code-prompt-caching-is-everything/",
+    "tier": 2,
+    "topic": "cost"
+  },
+  {
+    "id": "res-coordination-patterns",
+    "url": "https://claude.com/resources/articles/multi-agent-coordination-patterns",
+    "tier": 2,
+    "topic": "orchestration"
+  },
+  {
+    "id": "res-infrastructure-noise",
+    "url": "https://www.anthropic.com/research/infrastructure-noise",
+    "tier": 2,
+    "topic": "evals"
+  },
+  {
+    "id": "res-strong-safety-evaluations",
+    "url": "https://www.anthropic.com/research/building-strong-safety-evaluations",
+    "tier": 2,
+    "topic": "evals"
+  },
+  {
+    "id": "res-harnessing-claudes-intelligence",
+    "url": "https://claude.com/resources/articles/harnessing-claudes-intelligence",
+    "tier": 2,
+    "topic": "harness"
+  },
+  {
+    "id": "res-always-on-agents",
+    "url": "https://claude.com/resources/articles/building-always-on-agents",
+    "tier": 2,
+    "topic": "orchestration"
+  },
+  {
+    "id": "res-eval-awareness-browsecomp",
+    "url": "https://www.anthropic.com/research/eval-awareness-browsecomp",
+    "tier": 2,
+    "topic": "evals"
+  },
+  {
+    "id": "eng-claude-code-sandboxing",
+    "url": "https://www.anthropic.com/engineering/claude-code-sandboxing",
+    "tier": 2,
+    "topic": "security"
+  },
+  {
+    "id": "res-building-agents-agent-sdk",
+    "url": "https://claude.com/resources/articles/building-agents-with-the-claude-agent-sdk",
+    "tier": 2,
+    "topic": "harness"
+  },
+  {
+    "id": "ext-fireside-cat-thariq",
+    "url": "https://simonwillison.net/2026/Jul/21/cat-and-thariq/",
+    "tier": 3,
+    "topic": "harness"
   }
 ]

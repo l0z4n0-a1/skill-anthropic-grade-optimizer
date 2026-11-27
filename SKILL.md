@@ -1,6 +1,6 @@
 ---
 name: anthropic-grade-optimizer
-description: Reviews a Claude Code setup as a system, or one skill, subagent, hook or instruction file in depth. Measures what loads, what it costs and what gets used, then finds what is misplaced, colliding, unused, on the wrong model, or poorly made for its job, with cited sources. Use to audit, tune or cut the cost of a setup, to find why Claude ignores an instruction or picks the wrong skill or agent, or to fit a setup to a new model. Not for line-by-line cleanup of dated prompt text, which /doctor prompt-audit does.
+description: Reviews a Claude Code setup as a system, one skill, subagent, hook or instruction file in depth, or an orchestration process (runner, workflow, review loop) built on it. Measures what loads, what it costs and what gets used, then finds what is misplaced, colliding, unused, on the wrong model, or poorly made for its job, with cited sources. Use to audit, tune or cut the cost of a setup, to find why Claude ignores an instruction or picks the wrong skill or agent, or to fit a setup to a new model. Not for line-by-line cleanup of dated prompt text, which /doctor prompt-audit does.
 ---
 
 # Anthropic-grade optimizer
@@ -67,6 +67,10 @@ Work out from the request which job this is, and read its guide.
   `references/setup-review.md`.
 - **One piece**, such as a skill or a subagent: `references/piece-review.md`.
 - **Fitting a setup to a model**: `references/model-fit.md`.
+- **An orchestration process** built on the setup, such as a runner, a
+  workflow or a review loop that hands work between sessions:
+  `references/process-review.md`. It starts from the process's own run
+  records, which `measure.py` does not read.
 
 Before you begin, read `kb.py model <your own model id> --brief`, if the
 knowledge base covers the model you are. It records your generation's documented
@@ -108,8 +112,14 @@ carries:
 
 - **where**: the file and line, or the measured figure
 - **what is wrong and what it costs here**, in this setup's own terms
-- **the basis**: the claim ids it rests on, or "judgment" when it rests on your
-  reading alone, so the person can tell documented guidance from your opinion
+- **the basis**: the claim ids it rests on; or a named principle from
+  `references/foundations.md`, for what no claim covers but measurement,
+  control or systems design settles; or "judgment" when it rests on your
+  reading alone. The person must be able to tell documented guidance from an
+  older principle and from your opinion. Before a finding rests on a claim,
+  read its quote with `kb.py cite`: the quote is the source's words and the
+  claim sentence is a summary of them. A claim that opens by naming a speaker
+  is that person's account of their team's practice; cite it as theirs
 - **the change**: the concrete edit, new file or setting, written out
 - **how sure you are**, and what would show you are wrong
 - **how to tell it worked**: which measured figure should move, or what behavior

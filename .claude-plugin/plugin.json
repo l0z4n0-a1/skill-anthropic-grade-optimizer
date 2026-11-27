@@ -1,7 +1,7 @@
 {
   "name": "grade-optimizer",
-  "version": "2.0.0",
-  "description": "Reviews a Claude Code setup as a system, or one skill, subagent, hook or instruction file in depth.",
+  "version": "2.1.0",
+  "description": "Reviews a Claude Code setup as a system, one skill, subagent, hook or instruction file in depth, or an orchestration process built on it.",
   "license": "MIT",
   "repository": "https://github.com/l0z4n0-a1/skill-anthropic-grade-optimizer"
 }
