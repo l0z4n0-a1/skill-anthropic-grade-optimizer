@@ -2,6 +2,22 @@
 
 All notable changes to grade-optimizer follow [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and adhere to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- `docs/architecture.md`: components, trust boundaries, the claim lifecycle,
+  design decisions, extension points and a glossary.
+- `docs/example-report.md`: an unedited review of the `planted` calibration
+  setup, scored against the answer key.
+- `docs/troubleshooting.md`: symptom, cause and fix for install, permissions,
+  headless runs and script exit codes.
+- Issue and pull request templates, a code of conduct, and Dependabot for
+  GitHub Actions.
+
+### Fixed
+- The 2.1.0 entry now says 142 sources cited of 148 catalogued, matching the
+  README and NOTICE.
+
 ## [2.1.0] - 2026-11-27 - Process review, a measured knowledge base, and an update command
 
 Version 2.0 reviewed the pieces of a setup. This release adds the thing people
@@ -26,7 +42,8 @@ measures how far the knowledge base itself can be trusted.
   recorded in `kb/pending.json`, and `kb.py` prints a notice beside every claim
   that rests on it until `--reviewed` clears it. Exit codes distinguish
   "nothing changed" from "could not compare everything".
-- Knowledge base: 1,569 claims from 148 sources (was 822 from 82). New topics
+- Knowledge base: 1,569 claims citing 142 sources, of 148 catalogued
+  (was 822 claims, 82 sources catalogued). New topics
   cover verification and review loops, orchestration, the Agent SDK and
   headless runs, mods and auto mode, platform context management, containment,
   and coordination patterns. 35 of the new sources are Anthropic engineering

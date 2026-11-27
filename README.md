@@ -16,6 +16,8 @@
   <a href="#how-it-works">How it works</a> ·
   <a href="#where-it-runs">Where it runs</a> ·
   <a href="#what-has-been-measured">Evidence</a> ·
+  <a href="docs/example-report.md">Example</a> ·
+  <a href="docs/architecture.md">Architecture</a> ·
   <a href="docs/reference.md">Reference</a>
 </p>
 
@@ -133,7 +135,8 @@ claim (`python scripts/kb.py cite hooks-030` prints it).
 
 The quote is the source's words. The reviewer reads it, not the claim's
 one-line summary, before a finding rests on it, and you can check it yourself
-at the link.
+at the link. A whole report, unedited, is in
+[docs/example-report.md](docs/example-report.md).
 
 ## Requirements
 
@@ -359,7 +362,10 @@ Stated with its base, because a rate without one is decoration.
 
 | | |
 |---|---|
+| [docs/example-report.md](docs/example-report.md) | A complete review, unedited, of a setup with ten planted defects, and how it scored |
+| [docs/architecture.md](docs/architecture.md) | How the parts fit, the trust boundaries, each design decision and the alternative it rejected; glossary |
 | [docs/reference.md](docs/reference.md) | Every script: options, exit codes, output format; every data file: fields and what validates them |
+| [docs/troubleshooting.md](docs/troubleshooting.md) | Symptom, cause and fix for install, permissions, headless runs and the scripts' exit codes |
 | [references/](references/) | The review guides the skill follows, and the principles behind them |
 | [references/maintaining.md](references/maintaining.md) | Updating the knowledge base |
 | [evals/README.md](evals/README.md) | Calibration: how to run it and what it has shown |

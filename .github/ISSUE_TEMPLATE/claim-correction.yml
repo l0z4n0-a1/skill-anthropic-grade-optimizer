@@ -1,0 +1,36 @@
+name: Claim correction
+description: A claim in the knowledge base says more, less, or something other than its source.
+labels: [claim]
+body:
+  - type: input
+    id: claim
+    attributes:
+      label: Claim id
+      description: As printed by `python scripts/kb.py cite <id>`.
+      placeholder: hooks-030
+    validations:
+      required: true
+  - type: dropdown
+    id: kind
+    attributes:
+      label: What is wrong
+      options:
+        - Overstated (the source says less, or with a condition)
+        - Unsupported (the source does not say it)
+        - Wrong scope (true for another product, model or setting)
+        - Out of date (the source changed)
+        - The quote is not in the source
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: What the source says
+      description: Quote the source text that shows it, with the link and the section.
+    validations:
+      required: true
+  - type: textarea
+    id: fix
+    attributes:
+      label: Suggested wording
+      description: Optional.

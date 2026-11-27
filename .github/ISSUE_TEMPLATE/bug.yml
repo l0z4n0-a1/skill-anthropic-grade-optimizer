@@ -1,0 +1,28 @@
+name: Bug
+description: A script, the skill or the update command did something wrong.
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what you expected
+    validations:
+      required: true
+  - type: textarea
+    id: command
+    attributes:
+      label: Command and output
+      description: >
+        The exact command, its exit code and the error lines. Do not paste a
+        measure.py JSON report: it holds your setup's descriptions, hook
+        commands and permission rules.
+      render: text
+    validations:
+      required: true
+  - type: input
+    id: versions
+    attributes:
+      label: Versions
+      description: Plugin version (`VERSION`), `claude --version`, `python --version`, operating system.
+    validations:
+      required: true
