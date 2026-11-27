@@ -151,7 +151,7 @@ the outcome (P9 is the consequence that matters); a round or two is rejected for
 alone; `schema` checks a type only when the key is present, so a record without `rank`
 passes it; the reviewer's recall on a planted defect has never been measured.
 
-### `process-clean`: no known defect
+### `process-clean`: one open finding, otherwise sound
 
 51 runs, 48 verdict files (they cover 28 of the 51 runs, the later ones), 51 contract
 files. Outcomes: 38 closed, 7 escalated, 2 limit, 2 stalled, 2 dead. The process is the

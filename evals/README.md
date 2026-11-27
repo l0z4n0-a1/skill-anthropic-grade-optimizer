@@ -6,8 +6,8 @@ not report ones that are not. These files measure both.
 ## What is here
 
 - `build_fixtures.py` writes two throwaway Claude Code setups into a directory
-  you name. `planted` has ten defects, each a specific mistake that Anthropic's
-  documentation says is one. `clean` is a small setup with nothing wrong that
+  you name. `planted` has ten defects, each a specific mistake that a cited
+  claim says is one. `clean` is a small setup built to have nothing wrong that
   matters.
 - `ANSWER-KEY.md` lists the ten defects with the claims behind each, what in
   `planted` is deliberately sound, and how to score a run.
@@ -15,21 +15,30 @@ not report ones that are not. These files measure both.
 ## Running it
 
 ```bash
-python evals/build_fixtures.py /tmp/calibration
+python evals/build_fixtures.py <new empty directory>
 ```
 
-Then, in a fresh Claude Code session with this skill installed, once for each
+Use a fresh directory under your system's temporary folder (`/tmp/...`,
+`%TEMP%\...`) each time: the builder overwrites `planted` and `clean` inside
+the directory it is given. It takes that one argument and no options, and
+exits 0 when the fixtures were written and 2 on anything else.
+
+Then, in a fresh Claude Code session with the plugin loaded, once for each
 setup:
 
 ```
 Review the Claude Code setup whose user-level directory is
-/tmp/calibration/planted/home/.claude and whose project is
-/tmp/calibration/planted/project. Do not change anything in it.
+<directory>/planted/home/.claude and whose project is
+<directory>/planted/project. Do not change anything in it.
 ```
 
-The session must not be able to see `ANSWER-KEY.md` or `build_fixtures.py`: run
-it from a directory outside this repository and give it only the built paths.
-Score each report against the key. A run produces three numbers: defects found
+The reviewer must not be able to read `ANSWER-KEY.md` or the builders. Starting
+the session elsewhere is not enough, because the loaded plugin's own directory
+holds them. Make a copy of the repository without the `evals/` directory, load
+that copy with `claude --plugin-dir <copy>`, and start the session in a
+directory that is neither the copy nor this repository. Record with each
+result: the commit the copy was made from, the exact model id, and how it was
+scored. Score each report against the key. A run produces three numbers: defects found
 out of ten on `planted`, false findings on `planted`, and findings presented as
 significant on `clean`.
 
@@ -66,12 +75,12 @@ the last of the review's questions and the first to be cut short.
 ## Process calibration
 
 `references/process-review.md` has its own pair of fixtures. `python evals/build_process_fixtures.py
-/tmp/calibration-process` writes `process-planted` (ten defects, four things that are sound) and
+<new empty directory>` writes `process-planted` (ten defects, four things that are sound) and
 `process-clean`, each a small orchestration process with a README, a runner, a gate and the records
 of 50-odd past runs; the records come from a seeded generator, so the counts in the last section of
 `ANSWER-KEY.md` are exact and the build is identical every time. Run it as above, once per fixture,
-from a directory outside this repository, with a request such as "Review the orchestration process
-in /tmp/calibration-process/process-planted. Do not run or change anything in it." Score against the
+with the same reviewer copy and from a directory outside it, with a request such as "Review the
+orchestration process in <directory>/process-planted. Do not run or change anything in it." Score against the
 key: defects found out of ten on `process-planted`, false findings on `process-planted`, and
 false findings on `process-clean`. The same caveat holds: one run is one sample. On `process-clean`
 the target is 0 false findings, not 0 findings: a finding is false when it does not hold against the code

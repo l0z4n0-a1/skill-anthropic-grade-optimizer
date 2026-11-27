@@ -63,7 +63,8 @@ that actually ran differ, raise it.
 
 The places Claude Code offers differ in one way that decides most placement
 questions: whether what they hold is guaranteed or merely likely. A hook or a
-permission rule runs as code, so what it enforces always happens. An instruction
+permission rule runs as code, so what it enforces happens whenever it is
+configured to run and fails closed (the conditions are below). An instruction
 in an instruction file, a skill or a subagent prompt is text the model reads and
 weighs, so it is followed most of the time. Neither is better. Guarantees are
 rigid and cannot judge; instructions adapt and can be missed.
@@ -133,10 +134,12 @@ problem is conversation growth and trimming instruction files will not touch it.
 The core claims give Anthropic's order for the cost levers; follow it instead of
 leading with whichever is most visible.
 
-`cache_rebuilds` counts main-session requests that wrote most of their prompt
-to the cache although the session was already that large, and gives one cause
-for each where the history shows it: the context was compacted or cleared, the
-person paused longer than the cache lives, or the model changed mid-session. A
+`cache_rebuilds` counts main-session requests that wrote more than half of
+their prompt to the cache although the session was already that large, and
+gives a likely cause for each where the history suggests one: the context was
+compacted or cleared, the person paused longer than the cache lives, or the
+model changed mid-session. The cause is inferred from sizes and elapsed time,
+so report it as the probable one. A
 rebuild after a pause or a switch pays the cache-write price for context the
 session already held, so a large session resumed after a long pause is among
 the most expensive single requests there is. When pauses dominate, the remedy

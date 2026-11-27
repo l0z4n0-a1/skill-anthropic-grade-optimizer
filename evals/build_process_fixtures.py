@@ -2,16 +2,30 @@
 """Build two throwaway orchestration processes for calibrating the process review.
 
 `process-planted/` has ten defects, each documented in ANSWER-KEY.md, and four things
-that are deliberately sound. `process-clean/` is the same kind of process with nothing
-wrong that matters. Each holds a small process ("docket": a runner, three checks, a
-release step, a gate) and the records of past runs: records/ledger.jsonl and, for the
-later runs, records/verdicts/. The records come from a seeded generator, so every count
-in the answer key is exact and the output is identical on every run.
+that are deliberately sound. `process-clean/` is the same kind of process built to give
+a reviewer nothing to find that is a defect by the guide's standard. It is not proven
+defect-free: ANSWER-KEY.md records its residues and one open finding (some tickets' C2
+states something a script could decide, and the `fields` check looks only at presence and
+placeholders). A review that names that finding is right and must not be scored as a false
+one. Each holds a small process ("docket": a runner, checks, a release step, a gate) and
+the records of past runs: records/ledger.jsonl and, for the later runs, records/verdicts/.
+The planted process has three checks (schema, refs, accept); the clean one has five (those
+and fields, scope). The records come from a seeded generator, so every count in the answer
+key is exact and the generated files are identical on every run.
+
+`pack_sha` in the clean ledger is fixture metadata: the generator hashes a synthetic
+label (`<run>:pack`), not the bytes of a pack. It is a stand-in for the digest the clean
+runner would record, and it is not a verified pack digest.
 
 Usage: build_process_fixtures.py <output dir>
 Writes <output dir>/process-planted and <output dir>/process-clean. Nothing here is
 executed by the review; the runners are written to be runnable, with the executor and the
 reviewers supplied as commands through the environment.
+Use a new, empty output directory: the named folders are overwritten file by file, and a
+file left from an earlier build that this one does not write stays in place. Writing needs
+a folder that can be created; a failed write raises and exits 1 with a traceback.
+Exit: 0 when both folders were built; 2 when the arguments are not exactly one directory
+(a flag such as --help also gives 2 and prints this text to stderr).
 """
 import datetime as dt
 import hashlib

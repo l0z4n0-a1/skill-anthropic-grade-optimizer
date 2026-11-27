@@ -24,12 +24,13 @@ yours with its evidence, not as done.
 
 Run `python -B "${CLAUDE_PLUGIN_ROOT}/scripts/kb_update.py" --json --out <file>`,
 with the file outside the plugin directory (the script refuses a path inside
-it). It downloads each source that has a URL, compares it with the hash the
-claims were checked against, reads the documentation indexes for pages added or
+it). It downloads each source that has a URL, compares it with the hash
+recorded at the last download, reads the documentation indexes for pages added or
 removed since the last update, and lists what an earlier update fetched but
 nobody has re-reviewed (`pending`). It writes nothing inside the plugin. It
-contacts only the hosts of the source URLs and the two index pages, with a fixed
-User-Agent, and sends nothing from the person's setup.
+contacts only the hosts of the source URLs and the two index pages, refusing a
+redirect to any other host, with a fixed User-Agent, and sends nothing from the
+person's setup.
 
 Read the exit code with the report:
 
@@ -55,7 +56,8 @@ Tell the person, from that output and nothing else:
   may mean a source or a claim lost its footing. The report gives URLs only, so
   mark the judgment provisional unless you read the page;
 - what could not be checked and why: failed downloads, an index with no
-  baseline, and `not_compared`, the bundled sources and the claims that rest
+  baseline, a local snapshot that does not match the lock
+  (`snapshot_mismatch`), and `not_compared`, the bundled sources and the claims that rest
   only on them, which a check without `--bundled-dir` does not touch.
 
 A changed source does not mean its claims are wrong; it means nobody has
@@ -82,9 +84,11 @@ reads, so no review may use this checkout until the branch is merged.
 
 1. **Fetch.** `kb_update.py --apply` (the script refuses outside a working
    clone and applies nothing if a source failed, unless `--partial`). It writes
-   the changed snapshots, keeps the previous ones in `kb/snapshots-prev/`,
-   advances both locks, and records every changed source and page in
-   `kb/pending.json`. Add to `kb/sources.json` the new pages the person agreed
+   the changed snapshots, records every changed source and page in
+   `kb/pending.json`, then advances both locks. It keeps a previous snapshot
+   in `kb/snapshots-prev/` only when the local copy matched the lock; the
+   sources for which it could not are listed under `no_previous`, and a fresh
+   clone, which has no snapshots, lists them all. Add to `kb/sources.json` the new pages the person agreed
    to, then fetch those with `kb_fetch.py --only <ids>`. The six bundled sources
    need `--bundled-dir <claude-api skill directory>`; without it the full gate
    cannot pass on a fresh clone.
@@ -94,7 +98,8 @@ reads, so no review may use this checkout until the branch is merged.
 3. **Re-read the survivors.** A quote that is still there can have gained an
    exception in the next paragraph, which the gate cannot see. For every changed
    source, read the diff (`kb/snapshots-prev/<id>.md` against
-   `kb/snapshots/<id>.md`) and re-read **all** the claims that depend on it,
+   `kb/snapshots/<id>.md`; for a source under `no_previous` there is no diff,
+   so read the whole snapshot) and re-read **all** the claims that depend on it,
    including those whose quote survived, against the changed sections: scope,
    exceptions, version. Record how many were retained, corrected and removed.
 4. **Extract** from each changed or new snapshot, with `kb/EXTRACTION.md` as
@@ -121,10 +126,12 @@ reads, so no review may use this checkout until the branch is merged.
    A drop in one planted defect found, or one more invented finding, may be
    noise: repeat the run before it blocks anything. A drop that repeats, or an
    invented finding that repeats, does not ship; report it instead.
-8. **Release the pending items.** Only after the gate passes and the second
-   reader's result is recorded, run `kb_update.py --reviewed <ids>` for the
-   sources and pages you dealt with (`--reviewed all` only when it is true of
-   every one). Until then they stay flagged, which is the point.
+8. **Release the pending items.** Only after the second reader's result is
+   recorded, run `kb_update.py --reviewed <ids>` for the sources and pages you
+   dealt with (`--reviewed all` only when it is true of every one). The script
+   runs the gate itself and refuses if it fails; it cannot know whether the
+   second reading happened, so that is yours to attest. Until then the items
+   stay flagged, which is the point.
 9. **Write it up.** Add the `CHANGELOG.md` entry and raise `VERSION` and the
    manifest version together. Then give the person: what changed outside, what
    changed here, claims retained, corrected and removed per changed source, the

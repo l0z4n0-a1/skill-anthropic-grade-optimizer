@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024" role="img" aria-label="grade-optimizer">
+  <defs><filter id="glow" x="-200%" y="-200%" width="500%" height="500%"><feGaussianBlur stdDeviation="14"/></filter></defs>
+  <rect width="1024" height="1024" fill="#030303"/>
+  <polygon points="512.0,182.0 797.8,347.0 512.0,512.0 226.2,347.0" fill="#0b2219"/>
+  <polygon points="226.2,347.0 512.0,512.0 512.0,842.0 226.2,677.0" fill="#081812"/>
+  <polygon points="512.0,512.0 797.8,347.0 797.8,677.0 512.0,842.0" fill="#06120e"/>
+  <line x1="426.3" y1="554.9" x2="317.7" y2="551.6" stroke="#167A52" stroke-width="4.0" opacity=".7"/>
+  <line x1="317.7" y1="551.6" x2="380.5" y2="680.3" stroke="#167A52" stroke-width="4.0" opacity=".7"/>
+  <line x1="426.3" y1="554.9" x2="440.6" y2="371.8" stroke="#167A52" stroke-width="4.0" opacity=".7"/>
+  <line x1="440.6" y1="371.8" x2="609.2" y2="363.5" stroke="#167A52" stroke-width="4.0" opacity=".7"/>
+  <circle cx="426.3" cy="554.9" r="13.5" fill="#6a7a72"/>
+  <circle cx="317.7" cy="551.6" r="13.5" fill="#6a7a72"/>
+  <circle cx="380.5" cy="680.3" r="13.5" fill="#6a7a72"/>
+  <circle cx="440.6" cy="371.8" r="13.5" fill="#6a7a72"/>
+  <circle cx="609.2" cy="363.5" r="13.5" fill="#6a7a72"/>
+  <line x1="512.0" y1="559.1" x2="569.2" y2="526.1" stroke="#167A52" stroke-width="9.0" stroke-linecap="round"/>
+  <line x1="512.0" y1="606.3" x2="569.2" y2="573.3" stroke="#167A52" stroke-width="9.0" stroke-linecap="round"/>
+  <line x1="512.0" y1="653.4" x2="569.2" y2="620.4" stroke="#167A52" stroke-width="9.0" stroke-linecap="round"/>
+  <line x1="512.0" y1="700.6" x2="632.0" y2="631.3" stroke="#50FFAA" stroke-width="13.5" stroke-linecap="round"/>
+  <line x1="512.0" y1="747.7" x2="569.2" y2="714.7" stroke="#167A52" stroke-width="9.0" stroke-linecap="round"/>
+  <line x1="512.0" y1="794.9" x2="569.2" y2="761.9" stroke="#167A52" stroke-width="9.0" stroke-linecap="round"/>
+  <polygon points="512.0,182.0 797.8,347.0 797.8,677.0 512.0,842.0 226.2,677.0 226.2,347.0" fill="none" stroke="#30D990" stroke-width="9.0" stroke-linejoin="round"/>
+  <line x1="512.0" y1="512.0" x2="226.2" y2="347.0" stroke="#30D990" stroke-width="9.0" stroke-linecap="round"/>
+  <line x1="512.0" y1="512.0" x2="797.8" y2="347.0" stroke="#30D990" stroke-width="9.0" stroke-linecap="round"/>
+  <line x1="512.0" y1="512.0" x2="512.0" y2="842.0" stroke="#30D990" stroke-width="9.0" stroke-linecap="round"/>
+  <circle cx="512" cy="512" r="63.0" fill="#30D990" opacity=".35" filter="url(#glow)"/>
+  <circle cx="512" cy="512" r="18.9" fill="#f5faf8"/>
+</svg>

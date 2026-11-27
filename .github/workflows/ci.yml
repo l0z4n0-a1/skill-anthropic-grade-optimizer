@@ -8,12 +8,14 @@ on:
 
 jobs:
   ci:
-    name: Tests
+    name: Tests (${{ matrix.os }}, Python ${{ matrix.python }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 10
     strategy:
+      fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
+        python: ['3.9', '3.12']
 
     steps:
       - name: Checkout
@@ -22,10 +24,10 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
+          python-version: ${{ matrix.python }}
 
       # Measurement, gate behavior and knowledge-base structure. Quote checking
-      # against live documentation needs the snapshots, which are not committed;
+      # against the sources needs the snapshots, which are not committed;
       # maintainers run scripts/kb_gate.py locally (see references/maintaining.md).
       - name: Unit tests
-        run: python -m unittest discover tests -v
+        run: python -B -m unittest discover -s tests -t . -v

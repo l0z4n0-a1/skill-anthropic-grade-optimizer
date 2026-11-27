@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to the anthropic-grade-optimizer skill follow [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and adhere to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+All notable changes to grade-optimizer follow [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and adhere to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [2.1.0] - 2026-11-27 - Process review, a measured knowledge base, and an update command
 
@@ -37,13 +37,31 @@ measures how far the knowledge base itself can be trusted.
 - `evals/build_process_fixtures.py`: a planted process (ten defects) and a
   clean one, with seeded run records so the answer key's counts are exact.
 - `scripts/kb_gate.py` warns when a claim states a number its source never
-  prints.
+  prints, and validates the shape of every claim, source, lock and
+  `pending.json`: id form, global uniqueness, exactly one locator per source.
+  A missing snapshot exits 3, apart from a failed claim (1) and misuse (2).
+- `docs/reference.md`: every script's options, exit codes and JSON keys, and
+  every data file's fields and what validates them.
+- `measure.py --no-external-reads`, for a setup you did not write; `--user-config`;
+  `schema_version` and a `policy` block in its JSON; a plugin whose `SKILL.md`
+  sits at its root is now in the inventory.
+- `kb_update.py --max-seconds`; `schema_version` in its JSON; `no_previous`
+  lists changed sources with no trustworthy previous copy to diff against.
+- Plugin icon and README banner.
 
 ### Changed
 - Every claim was re-read against its source by a reader from a different
   model family than the one that extracted it, and tightened where it said
-  more than the source. All snapshots were refreshed to 2026-11-27 and the
-  claims of the 65 sources that had changed were re-read against the diffs.
+  more than the source. Every source was downloaded again on 2026-11-27: 65
+  had changed and 66 are new, so 131 lock entries carry that date, and the 17
+  that were byte-identical keep 2026-11-14. The claims of the 65 changed
+  sources were re-read against the diffs.
+- The skill is named `grade-optimizer`, like the plugin (it was
+  `anthropic-grade-optimizer`). Agent Skill names may not contain `anthropic`
+  or `claude`, and the old name read as if the project spoke for Anthropic.
+  The plugin command is now `/grade-optimizer:grade-optimizer`.
+- `NOTICE.md`: the MIT license covers the project's own material; quoted
+  excerpts belong to their authors and are listed by kind of source.
 - `SKILL.md`: read a claim's quote with `kb.py cite` before a finding rests on
   it; a claim that names a speaker is cited as that person's account.
 - `references/maintaining.md`: a fidelity rate is stated only from two readers
@@ -51,19 +69,38 @@ measures how far the knowledge base itself can be trusted.
   faulted.
 - Both fixture builders refuse an argument that looks like an option instead
   of creating a directory with that name.
+- `kb_fetch.py` records a changed source in `kb/pending.json` before advancing
+  the lock, as `kb_update.py --apply` does, so a download can no longer clear
+  the "not yet reviewed" signal. `--reviewed` runs the gate and refuses if it
+  fails.
+- The update scripts refuse a redirect to a host outside the sources and
+  indexes, cap each response at 5 MB, and date provenance in UTC.
+- `measure.py`: effective settings precedence for enabled plugins; timestamps
+  parsed with their offset; usage attributed with the plugin namespace;
+  `--compare` validates its baseline and refuses `--out` on the same file;
+  invalid input exits 2 with a message instead of a traceback; a Windows hook
+  command is no longer split as a POSIX shell line; cache-rebuild causes are
+  reported as inferred.
+- `kb.py` exits 2 for an unknown topic, question or claim id, distinct from a
+  valid empty selection (1).
+- CI runs on Python 3.9 and 3.12.
 
 ### Measured
 - Fidelity: on a random sample of 60 claims, one reader faulted 7 and the other
   passed all 60 while noting 4 close calls; no overlap, and all 11 objections
   held against the source. 49 of 60 (82%) drew no objection from either
   reader. The 11 were faults of scope or a dropped condition, none contrary to
-  its source, and were corrected. Assume that rate for the rest: read the
-  quote.
+  its source, and were corrected. This is the result on that sample before
+  correction; it does not establish a rate for the other 1,509 claims, which
+  is why the skill has the reviewer read the quote.
 - The gate passes with 0 errors and 1 warning (`skills-046`, a figure compared
   across two pages). 59 tests pass.
 - Process guide, five blind rounds: on the planted process the last three
-  found 9, 8 and 9 of 10 defects with 0, 1 and 0 false findings; on the clean
-  one, 0 false findings in the last three rounds run. The round that scored 8
+  found 9, 8 and 9 of 10 defects with 0, 1 and 0 false findings (the last 9
+  counts one defect named by its code path without the count the key asks
+  for); on the clean one, no invented finding in the last three rounds run,
+  with residues presented as defects counted separately in `evals/README.md`
+  (2 in the fourth round). The round that scored 8
   followed a revision of the guide, and its false finding was traced to one
   sentence, since corrected. `evals/README.md` has the table and what each
   round changed.
@@ -90,7 +127,7 @@ together, and whether each is good at its job.
   session history, including what one run of each subagent type costs and how
   often a session rebuilt its cache and why. `--compare` shows what changed
   between two runs; `--piece` measures one skill or subagent on its own.
-- `kb/`: 822 claims from 77 Anthropic sources, each with a verbatim quote, source
+- `kb/`: 822 claims from 82 Anthropic sources, each with a verbatim quote, source
   and read date, covering Claude Opus 5.5, Sonnet 5.5, Haiku 5.5 and Fable 5.2.
 - `scripts/kb_gate.py`: rejects any claim whose quote is not in its source
   snapshot; after a fetch, this is also how stale claims are found.

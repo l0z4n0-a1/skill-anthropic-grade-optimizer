@@ -1,9 +1,9 @@
 ---
-name: anthropic-grade-optimizer
+name: grade-optimizer
 description: Reviews a Claude Code setup as a system, one skill, subagent, hook or instruction file in depth, or an orchestration process (runner, workflow, review loop) built on it. Measures what loads, what it costs and what gets used, then finds what is misplaced, colliding, unused, on the wrong model, or poorly made for its job, with cited sources. Use to audit, tune or cut the cost of a setup, to find why Claude ignores an instruction or picks the wrong skill or agent, or to fit a setup to a new model. Not for line-by-line cleanup of dated prompt text, which /doctor prompt-audit does.
 ---
 
-# Anthropic-grade optimizer
+# Grade optimizer
 
 You are reviewing someone's Claude Code setup so that it gets more out of the
 model for less context and cost. The person may have built it over months, under
@@ -13,15 +13,17 @@ matter most.
 
 ## How the work is divided
 
-**Scripts measure.** `scripts/measure.py` lists every piece of the setup, when it
-loads, roughly what it costs in context, and how it was used in recent sessions.
+**Scripts measure.** `scripts/measure.py` lists the pieces of the setup, when
+each loads, roughly what it costs in context, and how it was used in recent
+sessions; what it could not see or resolve it lists under `not_measured`.
 Counting is exact work, so never estimate a number the script can report.
 
-**The knowledge base remembers.** `kb/claims/` holds several hundred statements
-from Anthropic's documentation, each with a verbatim quote and its source. It
-exists because your memory of how Claude Code behaves, and of what each model
-needs, may be older than the setup in front of you. Where a claim and your memory
-differ, the claim is the evidence.
+**The knowledge base remembers.** `kb/claims/` holds statements drawn from what
+Anthropic publishes: mostly its documentation, also its engineering posts, and
+a few attributed remarks by its staff. Each carries a verbatim quote and its
+source. It exists because your memory of how Claude Code behaves, and of what
+each model needs, may be older than the setup in front of you. Where a claim
+and your memory differ, the claim is the evidence.
 
 **You judge.** Whether a subagent's brief is good enough, whether two
 descriptions will confuse routing, whether a rule belongs in a hook: these take
@@ -38,18 +40,19 @@ at the setup as one system, and that is the ground here.
 
 This skill's files live in `${CLAUDE_SKILL_DIR}`, and the session's working
 directory is the person's project. Every `scripts/...` and `references/...` path
-in this file and in the guides is relative to that directory, so use the full
-path. Use `python3` where `python` is not on the path.
+in this file and in the guides is relative to the skill's directory, not to the
+project, so use the full path. Use `python3`, or `py -3` on Windows, where
+`python` is not on the path. Quote each path on its own.
 
 ```
-python "${CLAUDE_SKILL_DIR}/scripts/measure.py" --project <project dir> --out <temp file>.json
+python "${CLAUDE_SKILL_DIR}/scripts/measure.py" --project "<project dir>" --out "<temp file>.json"
 python "${CLAUDE_SKILL_DIR}/scripts/kb.py" core <question>
 ```
 
 Read the knowledge base in layers so it does not crowd out the review:
 
-1. `kb.py core <question>` is the first read: what Anthropic's documentation
-   says about one review question, in a dozen claims. `kb.py core` with no
+1. `kb.py core <question>` is the first read: what the sources say about one
+   review question, in at most fourteen claims. `kb.py core` with no
    argument lists the questions.
 2. `kb.py show <topics> --brief [--grep <text>]` when a finding needs more than
    the core. A topic can hold a hundred claims; narrow it, or redirect it to a
@@ -79,15 +82,19 @@ reporting too little or too much, delegating more than the work needs. Knowing
 them, compensate. If your model is not covered, say so in the report.
 
 Then measure. For a setup, run `measure.py` as above; the user-level directory
-defaults to `~/.claude`, and `--home <dir>` reviews another. For a piece that is
-not installed anywhere, `measure.py --piece <path>` reports its listing cost,
-body size and bundled files. Write output outside the setup under review.
+defaults to `$CLAUDE_CONFIG_DIR` when that is set and to `~/.claude` otherwise,
+and `--home <dir>` reviews another. For a piece that is not installed anywhere
+(a skill folder, a `SKILL.md` or a subagent's `.md` file),
+`measure.py --piece <path>` reports its listing cost, body size and bundled
+files. Write output outside the setup under review and outside any
+repository. When the setup is not the person's own, add
+`--no-external-reads`.
 
 Two things about scope shape how you read the measurement. Pieces are those of
 the user level, this project and enabled plugins, while usage covers every
-project on the machine, because user-level pieces serve all of them; so usage
-names agents this setup does not define, and a share across all spawns describes
-the machine. And what the script cannot see is listed under `not_measured`:
+project whose sessions the user-level directory holds, because user-level
+pieces serve all of them; so usage names agents this setup does not define,
+and a share across all spawns describes that whole history. And what the script cannot see is listed under `not_measured`:
 carry those limits into the report, say "about" for estimates, and build no
 recommendation on a number that was not measured.
 

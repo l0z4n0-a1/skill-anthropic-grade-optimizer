@@ -30,8 +30,10 @@ One JSON object per line, in `kb/claims/<your-file>.jsonl`:
 {"id": "skills-012", "topic": "skills", "kind": "fact", "applies_to": ["claude-code"], "claim": "…", "why": "…", "check": "…", "quote": "…", "source": "cc-skills"}
 ```
 
-- `id`: `<prefix>-<3 digits>`, unique and never reused. Use the prefix and number
-  range you were given. The prefix is a namespace that keeps parallel extractors
+- `id`: `<prefix>-<number>`, written with three digits (`skills-012`), unique
+  across the whole knowledge base and never reused. Use the prefix and number
+  range you were given; working alone, use the prefix of the file you are adding
+  to and the next unused number. The prefix is a namespace that keeps parallel extractors
   from colliding; it often matches the topic but does not have to, and `topic` is
   the field that queries select on.
 - `topic`: one of `prompting`, `model`, `context`, `cost`, `skills`, `subagents`,
