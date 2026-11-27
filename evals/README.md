@@ -66,10 +66,61 @@ Each row is a single run, scored by hand against the key.
 | 2026-11-15 | 2.0.0 | Claude Haiku 5.5 | 7 of 10 (missed D4, D7, D8) | 0 | not run |
 | 2026-11-15 | 2.0.0 | Claude Opus 5.5 | not run | not run | 1, again a real defect in the fixture (second entry in the answer key); fixture changed again |
 
-The `clean` setup as it stands now has not been reviewed yet, so there is still
-no recorded run in which a setup with nothing wrong produced no significant
-finding. Both attempts at writing one contained a real problem, and the review
-found it each time.
+| 2026-11-27 | 2.1.0 | Claude Sonnet 5.5 | 10 of 10 | 0 | not run |
+| 2026-11-27 | 2.2.0 | Claude Sonnet 5.5 | (upgrade runs, below) | | 0 in 3 runs |
+
+The 2.1.0 row is the run published unedited in
+[docs/example-report.md](../docs/example-report.md). The 2.2.0 `clean` figure
+comes from the three upgrade runs below: each began with a full review of the
+current `clean` setup, found nothing worth changing and stopped without an
+edit. That is the first recorded result on `clean` with no significant
+finding. Both earlier attempts at writing it contained a real problem, and the
+review found it each time.
+
+## Upgrade calibration
+
+`/grade-optimizer:upgrade` runs unattended on a fresh `planted` copy, with
+"apply all, including deletions and user-level changes", from a plugin copy
+without `evals/` or `tests/`. Then three checks, none of them the upgrader's
+own word:
+
+- `python evals/check_upgrade.py <dir>/planted`: a deterministic oracle, one
+  check per defect, run on the edited files. It exercises the guard with
+  five commands (three pushes to main it must block, two branches containing
+  the word it must let through) and checks the rest by structure. On a fresh
+  build every defect reads "not fixed"; on a hand-fixed copy in its tests,
+  every one reads "fixed". It also checks that what the key lists as sound
+  survives, and that every file no defect touches is unchanged.
+- A blind review of the result in a new session, which sees only the edited
+  setup, to catch what the upgrade broke or only half fixed.
+- The same upgrade on a fresh `clean` copy, where the right result is no edit.
+
+All runs: 2026-11-27, Claude Sonnet 5.5, scored by the final oracle.
+
+| Run | Guides | Fixed (oracle) | Not fixed, and why | Sound kept | Edits outside the fixture | Edits on `clean` |
+|---|---|---|---|---|---|---|
+| 1 | first draft | 6 of 10 | D1, D2: the rewritten guard missed `git -C . push origin main`. D4, D9: held, with a question | 5 of 5 | 0 | 0 |
+| 2 | + test guards like a bypasser; read the capabilities guide | 6 of 10 | D6: judged not worth its risk. D10: moved max to high, still the top tier. D4, D9: held | 5 of 5 | 0 | 0 |
+| 3 | + `settings_edit.py` | 8 of 10 | D4, D9: held, with a question | 5 of 5 | 0 | 0 |
+
+D4 and D9 were held in every run, each time with the question that blocks
+them: what `helper` is for, and whether `format_changed.py` was removed on
+purpose. Rewriting a description without knowing the agent's job, or deleting
+a hook the person may rely on, is the guess the command is told not to make,
+so these count as not fixed but are the behavior wanted.
+
+What the blind reviews found after each run. No run lost a sound rule or broke
+a working piece. Run 3 introduced one defect: the rewritten guard parsed git
+options from a list that included one git does not have and misread
+`--signed`, and it let `git push origin HEAD` through while `main` was checked
+out. The guide now says to write the smallest guard that covers the rule and
+to block where it cannot tell; that change has not been run yet. The reviews
+also kept raising what an upgrade cannot settle alone: two staging procedures
+that may differ on purpose, a hook that protects one machine where the rule
+is the project's, branch protection on the server.
+
+Three runs on one model are a small sample, and the guides changed between
+them; read the rows as the record of what each change fixed, not as a rate.
 
 The model-fit job was run once, blind, on `planted` (Claude Opus 5.5, moving a
 setup from Opus 5.5 to Sonnet 5.5). It produced the three lists the guide asks

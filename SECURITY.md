@@ -76,6 +76,20 @@ follows redirects only within that URL's host.
 **`kb.py` and `kb_gate.py`** read the repository's own `kb/` directory and
 nothing else.
 
+**`backup.py` reads and writes the files you name, and nothing else.** `save`
+copies them into a backup folder (default `~/.grade-optimizer-backups`, outside
+`~/.claude` and any project); `restore` writes them back. The copies can hold
+secrets from your settings files: the folders and files are created readable by
+the current user only where the system supports that, and on Windows they take
+the permissions of their folder. It prints no file contents and has no network
+code.
+
+**`settings_edit.py` reads and writes the one settings file you name, and nothing
+else.** It makes six kinds of edit (hooks, permission rules, a few plain
+settings) and prints only the part it changed, so the rest of the file, which
+can hold secrets, is never shown. It writes atomically, refuses a file that is
+not valid JSON without echoing it, and has no network code.
+
 No script executes anything from the setup under review. Hooks, skills and
 agents are read as text.
 

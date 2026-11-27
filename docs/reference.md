@@ -8,7 +8,7 @@ Paths are relative to the repository root unless they are absolute.
 Contents:
 
 1. Conventions
-2. Scripts: `measure.py`, `kb.py`, `kb_gate.py`, `kb_fetch.py`, `kb_update.py`, fixture builders
+2. Scripts: `measure.py`, `kb.py`, `kb_gate.py`, `kb_fetch.py`, `kb_update.py`, fixture builders, `backup.py`, `check_upgrade.py`, `settings_edit.py`
 3. Data files
 4. Limits fixed in code
 
@@ -113,11 +113,30 @@ Units used throughout:
 | `commands`, `rules`, `output_styles` | lists of `{name, scope, path, chars, est_tokens, frontmatter, other_fields, parse_notes}`; rules also carry `loads` | empty list |
 | `plugins` | list of `{id, name, enabled, decided_by, installs}`, plus `note` for a plugin enabled with no install record | empty list |
 | `settings` | `{files, hooks, mcp_servers}` | lists empty |
+| `features` | object of `{value, not_measured}` items, see below | never |
 | `description_overlaps` | list of `{a, b, jaccard, shared}`, most similar first | empty list |
 | `usage` | object, see below | `{}` when `--days` is 0 or `<home>/projects` does not exist |
 | `never_invoked_in_window` | `{skills: [qualified name], agents: [qualified name]}` | `{}` when `usage` is `{}` |
 | `spawned_without_definition_here` | list of agent type names | empty list |
 | `unreadable` | list of strings, one per problem file | empty list |
+
+`features` counts the documented features this setup configures. It is derived only from records already in the report: nothing extra is read. Each item is `{value, not_measured}`: `not_measured` is `null`, or a sentence saying what the script cannot see that could change the answer. A zero or `false` means none were seen in what was read, not that none exist. The block was added without a `schema_version` bump, because it adds a key and changes none; a report written before it lacks `features`, and `--compare` then leaves its rows out.
+
+| Item | `value` |
+|---|---|
+| `hooks_by_event` | `{event: count}` over the hooks in the settings files |
+| `stop_hooks_exist` | `{Stop: bool, SubagentStop: bool}` |
+| `pretooluse_hooks_exist` | bool |
+| `hooks_with_on_failure_block_by_event` | `{event: count}` of hooks whose `onFailure` is `block`; events with none are absent |
+| `permission_rules` | `{allow, ask, deny}`, rules summed over the settings files |
+| `path_scoped_rules` | count of rules whose frontmatter has `paths` |
+| `agents_frontmatter_fields` | `{model, effort, tools: {set, not_set}, total}` from each agent's frontmatter |
+| `skills_frontmatter_flags` | `{disable_model_invocation, user_invocable_false, allowed_tools_set, with_bundled_files, total}`; `with_bundled_files` counts any file beside `SKILL.md`, not only scripts |
+| `mcp_servers` | count of the servers in `settings.mcp_servers` |
+| `enabled_plugins` | count of plugins enabled in the effective settings |
+| `settings_keys_present` | `{outputStyle: bool, statusLine: bool}`; the key names only, the values are not read |
+
+With `--compare`, when both measurements have `features`, the comparison adds rows for the permission rule counts, agents with each field set, the skill flags, path-scoped rules, MCP servers, enabled plugins and hooks per event.
 
 Records of pieces (skills, agents, commands, rules, output styles) carry `parse_notes`, a list naming what the line-based frontmatter reader saw but did not interpret. Skill records also carry `description_source`, which says whether the description came from frontmatter, from the first non-empty body line, or was missing.
 
@@ -430,6 +449,110 @@ Both print `built <path> and <path>` on success.
 | 0 | Both folders were built. |
 | 1 | A write failed. The script raises and exits with a traceback. |
 | 2 | The arguments are not exactly one directory. |
+
+### 2.7 `scripts/backup.py`
+
+Copies the files an upgrade will edit into a private backup folder, and puts the originals back. It reads and writes only the paths it is given and its own store. It makes no network call and never prints file contents.
+
+```
+backup.py save [--out STORE] PATH [PATH ...]
+backup.py record BACKUP_DIR
+backup.py restore BACKUP_DIR [--force]
+backup.py status BACKUP_DIR
+```
+
+| Subcommand | What it does |
+|---|---|
+| `save` | Copies each file into a new folder `<STORE>/<UTC timestamp>-<4 hex>/files/` and writes `manifest.json` beside it. A path that does not exist is recorded as `absent`. A folder as a path exits 2 and creates nothing. Prints `backup:`, `folder:`, a count and a `restore with:` command line. |
+| `record` | Stores the sha256 of each path as it is now (`post_edit_sha256`; `absent` when the edit deleted it). Run it after the edits. Running it again replaces the earlier value. |
+| `restore` | Puts the originals back and deletes files that did not exist originally. A file already original is left alone, so a second run changes nothing. |
+| `status` | One line per path: `original`, `edited` (matches the recorded post-edit hash), `changed since` or `missing`. Always exits 0. |
+
+| Option | Argument | Default | Meaning |
+|---|---|---|---|
+| `--out` (`save`) | `STORE` | `~/.grade-optimizer-backups` | The store folder. The default is a folder in the user's home, outside `~/.claude` (or `$CLAUDE_CONFIG_DIR`) and outside any project, so editing the setup or cleaning a repository does not remove it. A store inside `~/.claude` gets a warning. Nothing prunes the store. |
+| `--force` (`restore`) | none | off | Also overwrite files that changed since the edit. |
+
+`manifest.json` (version 1) lists, per path: `path` (absolute, symlinks resolved), `sha256` of the original or `absent`, `size`, `mode` (octal text, null when absent), `copy` (a name under `files/`, null when absent) and `post_edit_sha256` (null until `record`).
+
+How `restore` decides: a file is put back only when its current content is the recorded post-edit content or already the original. Any other file, including one deleted after the edit, is refused: all of them are listed on stderr, exit 2, and nothing is touched, because a half-restored setup is worse than none. A backup that was never `record`ed has no post-edit hash, so every edited file is refused until `--force`. The hash of each backup copy is checked against the manifest before anything is written. Each file is written to a temporary file in its own folder and moved over the target with `os.replace`.
+
+Files written: the store folder, a backup folder with `files/`, the copies, and `manifest.json` (rewritten atomically by `record`); on `restore`, the target files, each by atomic replace.
+
+Privacy and the Windows limit. On systems with POSIX modes the store (when this script creates it), each backup folder and `files/` are created `0700` and the copies and manifest `0600`; an existing store is not changed, only warned about when others can read it. On Windows the standard library cannot set access rules, so nothing is restricted by this script: folders and files take the ACL they inherit. The default store, under the user profile, is normally readable only by the owner, `SYSTEM` and administrators; a `--out` outside the profile gets a note, because its folder's ACL applies. The copies can hold secrets from settings files, so delete a backup when it is no longer needed. Modes are put back on `restore` only where POSIX modes exist.
+
+| Code | Meaning |
+|---|---|
+| 0 | Done. `restore` with nothing to do is also 0. `status` is always 0. |
+| 1 | An I/O error, or a backup copy that does not match its recorded hash (nothing was restored from it). |
+| 2 | The command line or the backup cannot be used: bad flag, not a backup folder, a manifest that cannot be read or names a copy outside `files/`, a path that is a folder, or `restore` refused because files changed since the edit. |
+
+### 2.8 `evals/check_upgrade.py`
+
+The oracle for the `planted` fixture after an upgrade: it says which of the ten defects in `evals/ANSWER-KEY.md` are gone and whether what the key lists as sound survived.
+
+```
+check_upgrade.py <fixture root>
+```
+
+`<fixture root>` is the `planted` folder that `build_fixtures.py` wrote (it holds `home/.claude` and `project`), or the output folder that holds `planted/`. Exactly one argument; a flag such as `--help` is misuse, and the script prints its docstring to stderr.
+
+Warning: it runs the fixture's guard scripts. The setup's `PreToolUse` hooks that cover `Bash` and name a `.py` or `.sh` script are executed, in a temporary copy of the fixture, with a 10-second limit, once with a sample payload for `git push origin main` (must be blocked: exit 2, or exit 0 with a JSON `permissionDecision` of `deny`) and once for `git push origin domain-fix` (must not be blocked). Point it at a fixture you built, not at a setup you do not trust.
+
+Output, one line per check, then a count line:
+
+- `D1`..`D10`: `D<n> fixed: <why>` or `D<n> not fixed: <why>`. D1 and D2 are judged by running the guard; D3 to D10 by structure. Any reasonable fix passes, and where a defect allows removal (an agent, a skill, a hook entry) removal passes.
+- `S1`..`S5`: `S<n> kept: <why>` or `S<n> lost: <why>`. They cover the integer-cents rule and its reason, the test command, the renamer's prompt, the deploy-staging commands, and every file no defect touches (the session transcripts, compared by hash with a fresh build, ignoring the build-time timestamps).
+- `defects fixed: N of 10; sound things kept: N of 5`.
+
+Files written: none in the fixture, which is never modified; checks run on a temporary copy that is deleted afterwards. A check that cannot run counts as failed and says so.
+
+| Code | Meaning |
+|---|---|
+| 0 | Every defect fixed and every sound thing kept. |
+| 1 | Anything else. On an untouched fresh build the result is 10 `not fixed` and exit 1 (the null baseline). |
+| 2 | Not exactly one argument, a flag, or a folder that is not a `planted` fixture. |
+
+### 2.9 `scripts/settings_edit.py`
+
+Edits a Claude Code settings file so that nobody has to read it: a settings file can hold secrets, and a model that opens it sees them. The script makes a small fixed set of edits and prints only the region it changed. It makes no network call and writes nothing except the file it edits.
+
+```
+settings_edit.py <settings file> add-hook --event E [--matcher M] --command C [--timeout N] [--on-failure block] [--allow-unknown-event]
+settings_edit.py <settings file> remove-hook --event E --command-contains TEXT
+settings_edit.py <settings file> set-hook-option --event E --command-contains TEXT [--on-failure block|default] [--timeout N]
+settings_edit.py <settings file> add-permission --kind allow|ask|deny --rule RULE
+settings_edit.py <settings file> remove-permission --kind allow|ask|deny --rule RULE
+settings_edit.py <settings file> set --key K --value V
+```
+
+| Operation | What it does |
+|---|---|
+| `add-hook` | Adds `{type: "command", command, timeout, onFailure}` (the last two only when given) under `hooks.E`, in the group whose `matcher` is M, or in a new group. A hook with the same command already in that group is left as it is. An event name that is not in the documented list (built in, widened by the events in `kb/snapshots/cc-hooks.md` when present) is refused, because Claude Code ignores a hook under an unknown event without an error; `--allow-unknown-event` accepts it. |
+| `remove-hook` | Removes the one command hook under E whose command contains TEXT. Zero matches or more than one is a refusal; the matching commands are listed. Empty groups and an empty event are removed with it. |
+| `set-hook-option` | The same single-match rule. `--on-failure block` sets `onFailure`; `default` removes it. `--timeout` sets the timeout. At least one of the two is required. |
+| `add-permission` | Appends RULE to `permissions.<kind>`, creating the list. No change when it is already there. |
+| `remove-permission` | Removes RULE from `permissions.<kind>`. No change when it is not there. |
+| `set` | Sets a key only if it is in `SAFE_SETTINGS`, the allowlist `measure.py` already exposes (section 2.1), imported from it and not copied. V is `true` or `false`, a whole number, or else text. |
+
+| Option | Applies to | Meaning |
+|---|---|---|
+| `--dry-run` | every operation | Print what would change and write nothing. |
+| `--create` | every operation | Create the file as `{}` when it does not exist. Without it a missing file is exit 2. A run that changes nothing creates nothing. |
+
+The hook shape is the documented one and the one `measure.py` reads: `hooks.<event>` is a list of `{matcher, hooks: [{type: "command", command, timeout, onFailure}]}`. The event name is checked only for shape (letters, starting upper-case), not against the events Claude Code documents; an event Claude Code does not know is ignored without error, so check the spelling.
+
+Output, for a real run and for `--dry-run`: `change:` with a label, then `before:` and `after:` showing the changed region only (one hook entry with its matcher, a permission list, or a key with its old and new value; `(absent)` when there was nothing), then `written: <path>`, `dry run: nothing written` or `nothing to change`. Nothing else from the file is printed, and an error message never repeats the file's content. The one exception is the list of candidate commands when `remove-hook` or `set-hook-option` matches several hooks: a command that embeds a secret would show it there.
+
+What is kept: the file's other keys, their order and their values. Whitespace is re-emitted in the file's own style (indent, line endings, a byte-order mark and a final newline are detected and kept). JSON has no comments and no repeated keys, so neither is preserved. The write is atomic (a temporary file in the same folder, then `os.replace`), keeps the file's mode, follows a symlink and replaces its target; a new file is created `0600` where the system has modes and, on Windows, takes the ACL of its folder.
+
+Files written: the settings file, and no other. A file that is not valid JSON is refused without being changed or echoed.
+
+| Code | Meaning |
+|---|---|
+| 0 | Done, or nothing needed changing, or `--dry-run`. |
+| 1 | The file could not be written (I/O error). It is left as it was. |
+| 2 | Refused or unusable: bad flag; the file is missing without `--create`, is a folder, is not UTF-8, is not valid JSON, or is not a JSON object; `hooks` or `permissions` has a shape the script does not edit; `remove-hook` or `set-hook-option` matched zero or several hooks; a `set` key outside the allowlist. |
 
 ## 3. Data files
 

@@ -2,9 +2,42 @@
 
 All notable changes to grade-optimizer follow [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and adhere to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [2.2.0] - 2026-11-27 - From reviewer to upgrade
+
+Version 2.1 told you what to change. This release makes the changes with you,
+shows where the setup stands against the documented standard, and looks for
+what the setup leaves unused.
 
 ### Added
+- `/grade-optimizer:upgrade` (`commands/upgrade.md`): review, a plan of exact
+  edits with scope, cost and source, the person's pick, a backup of every file
+  touched, one edit at a time with its check, then a second measurement and the
+  board before and after. User-invoked only. Unattended runs apply only with an
+  explicit "apply all", and deletions or user-level changes only when the
+  request names them.
+- The standard board at the top of every setup report: per question, meets
+  (and what was checked), gap (which findings) or not checked. No total score.
+- Question 7 and `references/capabilities.md`: 25 Claude Code capabilities,
+  each with what it buys, the signal in a setup that it would pay off, when it
+  does not fit, and the claims behind it. An unused capability is never a
+  finding by itself. Includes five documented facts that contradict common
+  belief.
+- `scripts/backup.py`: save, record, status and an all-or-nothing atomic
+  restore that refuses to overwrite later edits.
+- `scripts/settings_edit.py`: changes hooks, permission rules and allowlisted
+  settings keys without the model reading the settings file; prints only the
+  changed region; refuses hook events Claude Code does not document.
+- `measure.py`: a `features` block (what is configured, from records it
+  already reads). `schema_version` unchanged, since the block only adds keys.
+- `evals/check_upgrade.py`: a deterministic oracle for an upgraded `planted`
+  setup, and the upgrade calibration in `evals/README.md`.
+
+### Changed
+- Positioning: the README, banner, manifests and skill description lead with
+  the outcome, a setup brought up to the documented standard; the quote is the
+  reason to trust a change.
+
+### Docs (also since 2.1.0)
 - `docs/architecture.md`: components, trust boundaries, the claim lifecycle,
   design decisions, extension points and a glossary.
 - `docs/example-report.md`: an unedited review of the `planted` calibration

@@ -8,7 +8,7 @@
     {
       "name": "grade-optimizer",
       "source": "./",
-      "description": "Reviews a Claude Code setup as a system, one skill, subagent, hook or instruction file in depth, or an orchestration process built on it, with cited sources."
+      "description": "Brings a Claude Code setup up to the standard Anthropic's documentation describes: measures it, reviews it as a system, shows what it leaves unused, and applies the changes you approve, each with its source quoted."
     }
   ]
 }

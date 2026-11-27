@@ -47,10 +47,10 @@ person is choosing and not just obeying.
 itself may have changed. A pattern from before a recent change is a reason to
 measure again later.
 
-## The six questions
+## The questions
 
-They go from the ones that usually change the most to the ones that change the
-least. Spend effort where the measurement points; a setup rarely has serious
+The first six go from the ones that usually change the most to the ones that
+change the least; the seventh looks at what the setup does not have. Spend effort where the measurement points; a setup rarely has serious
 problems under all six. Before each, read its core claims with the command
 given. A setup is usually read by more than one model: use the one that served
 most main-session requests for the instruction file and the skills, and each
@@ -205,11 +205,51 @@ most work, and anything the earlier questions flagged. For text that may simply
 be dated, recommend `/doctor prompt-audit`, and spend your own reading on
 whether the piece is good at its job.
 
+### 7. What does the setup leave unused that would pay off here?
+
+Read `references/capabilities.md` in full before answering this question, and
+set it beside the `features` block of the measurement. It is short, and the
+signals it lists are what this question is about; answering from memory of
+Claude Code's features misses the ones added since.
+
+The first six questions find what is wrong with what exists. This one looks at
+what does not exist: Claude Code offers more than most setups use, and people
+build workarounds in prose for what a feature already does. A rule repeated in
+capitals where a permission rule would hold it, a "remember to run the tests"
+where a Stop hook would run them, a long instruction file where path-scoped
+rules would load each part only where it applies.
+
+The guide lists capabilities with the signal that says each would pay off and
+the conditions under which it would not. Recommend one only when the signal
+is in this setup, and name the signal. A capability the setup does not use is
+not a finding by itself: most setups need few of them, and a review that
+recommends every feature teaches the person nothing about theirs.
+
 ## Reporting
 
 Lead with what you found, in two or three sentences a person could act on
-without reading further. Then the measured picture in a few lines, then the
-findings in order of effect, in the shape SKILL.md describes. Say what you chose
+without reading further. Then the standard board, then the measured picture in
+a few lines, then the findings in order of effect, in the shape SKILL.md
+describes, then the unused capabilities that fit, each with its signal. That
+section is never left out: when none fit, say so in a line and name the
+signals you looked for, so the person can tell "nothing fits" from "not
+looked at".
+
+The standard board puts the setup beside what Anthropic's documentation
+describes, one row for each of the first six questions:
+
+| Question | Standard (from `kb.py core`) | Here |
+|---|---|---|
+| Placement | a rule that must hold is a hook or permission rule | gap: findings 1, 2 |
+| ... | ... | ... |
+
+Each "Here" cell is one of three things. **Meets** means you checked it and
+found nothing worth changing; say what you checked when it was a sample, as
+question 6 always is. **Gap** names the findings. **Not checked** says why: not
+measured, out of scope, or not enough evidence. Do not total the rows into a
+score. The questions are not equal, an allocation row rests on judgment, and a
+count would turn a review into a compliance claim it cannot back. The board
+shows where the setup stands; the findings say what to do about it. Say what you chose
 not to change and why, since a review that names what is sound is easier to
 trust. Close with what you did not look at and what the measurement could not
 see.

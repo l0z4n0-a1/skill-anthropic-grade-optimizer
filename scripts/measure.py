@@ -45,13 +45,18 @@ shares are fractions between 0 and 1 rounded to 4 places, or null when there is 
     read_scope {confine_external_reads, skipped_outside_scope}, policy, estimate_note, not_measured,
     skill_listing_cap {chars, source}, instruction_mode {value, source, note}, fixed_context_est_tokens,
     instruction_files, skills, agents, commands, rules, output_styles, plugins, settings,
-    description_overlaps, usage, never_invoked_in_window, spawned_without_definition_here, unreadable.
+    features, description_overlaps, usage, never_invoked_in_window, spawned_without_definition_here, unreadable.
     Optional: `usage` is {} when --days is 0 or <home>/projects does not exist, and then
     `never_invoked_in_window` is {} too. Records of pieces carry `parse_notes` (what the line-based
     frontmatter reader did not interpret) and, for skills, `description_source`.
   piece, top-level keys: schema_version, kind, piece_type ("skill" or "agent"), the record of the piece
     (the same fields as an entry of `skills` or `agents`), bundled (skills only: est_tokens of the .md and
     .txt files in its subfolders, by folder), estimate_note, policy, read_scope, not_measured, unreadable.
+`features` is a count of documented features this setup configures, derived only from the records above (hooks
+by event, permission rules, path-scoped rules, subagent and skill frontmatter fields, MCP servers, enabled
+plugins, the settings keys outputStyle and statusLine). Each item is {value, not_measured}: `not_measured`
+is null or says what the script cannot see. A zero or false is "none seen in what was read", not "none". It adds
+a key and changes none, so schema_version stays 1; --compare adds rows for it when both measurements have it.
 `policy` lists the named constants at the top of this file that decide how the report is cut (top-N,
 the Jaccard cutoff for overlaps, text limits, the history window). They are presentation choices, not
 facts about Claude Code; those are in kb/harness.json.
@@ -789,6 +794,58 @@ def settings_view(home: pathlib.Path, project: pathlib.Path, settings: list, sca
     return view
 
 
+def features_in_use(pieces: dict, settings: dict, plugins: list, config_found: bool) -> dict:
+    """Which documented features this setup configures, derived only from records already built (no new read).
+
+    Each item is {value, not_measured}: `value` is what the records show; `not_measured` is null, or says what
+    this script cannot see that could change the answer. A false or zero value is "none seen in what was read".
+    """
+    files = settings["files"]
+    hooks = settings["hooks"]
+    by_event: dict = {}
+    blocking: dict = {}
+    for hook in hooks:
+        by_event[hook["event"]] = by_event.get(hook["event"], 0) + 1
+        if str(hook["options"].get("onFailure", "")).lower() == "block":
+            blocking[hook["event"]] = blocking.get(hook["event"], 0) + 1
+    hook_gap = "hooks defined by plugins, in skill or subagent frontmatter, or in managed settings"
+    rules = {name: sum(len(f["permission_rules"].get(name, [])) for f in files) for name in ("allow", "ask", "deny")}
+
+    def frontmatter(record: dict) -> dict:
+        return as_dict(record.get("frontmatter"))
+
+    agents, skills = pieces["agents"], pieces["skills"]
+    agent_fields = {field: {"set": sum(1 for a in agents if frontmatter(a).get(field)),
+                            "not_set": sum(1 for a in agents if not frontmatter(a).get(field))}
+                    for field in ("model", "effort", "tools")}
+    skill_flags = {
+        "disable_model_invocation": sum(1 for s in skills if str(frontmatter(s).get("disable-model-invocation", "")).lower() == "true"),
+        "user_invocable_false": sum(1 for s in skills if str(frontmatter(s).get("user-invocable", "")).lower() == "false"),
+        "allowed_tools_set": sum(1 for s in skills if frontmatter(s).get("allowed-tools")),
+        "with_bundled_files": sum(1 for s in skills if s.get("bundled_files", 0) > 0),
+        "total": len(skills)}
+    keys = {k for f in files for k in f["keys"]}
+    mcp_gap = "servers defined by plugins or managed settings"
+    if not config_found:
+        mcp_gap += "; the user-level .claude.json was not read (not found, or outside the read scope)"
+    return {
+        "hooks_by_event": {"value": dict(sorted(by_event.items())), "not_measured": hook_gap},
+        "stop_hooks_exist": {"value": {e: e in by_event for e in ("Stop", "SubagentStop")}, "not_measured": hook_gap},
+        "pretooluse_hooks_exist": {"value": "PreToolUse" in by_event, "not_measured": hook_gap},
+        "hooks_with_on_failure_block_by_event": {"value": dict(sorted(blocking.items())), "not_measured": hook_gap},
+        "permission_rules": {"value": rules, "not_measured": "rules in managed settings"},
+        "path_scoped_rules": {"value": sum(1 for r in pieces["rules"] if "paths" in frontmatter(r)),
+                              "not_measured": "rules in managed settings or in folders this script does not scan"},
+        "agents_frontmatter_fields": {"value": {**agent_fields, "total": len(agents)}, "not_measured": None},
+        "skills_frontmatter_flags": {
+            "value": skill_flags,
+            "not_measured": "with_bundled_files counts any file beside SKILL.md, not only scripts; whether a bundled file is a script is not read"},
+        "mcp_servers": {"value": len(settings["mcp_servers"]), "not_measured": mcp_gap},
+        "enabled_plugins": {"value": sum(1 for p in plugins if p["enabled"]), "not_measured": "plugins enabled in managed settings"},
+        "settings_keys_present": {"value": {"outputStyle": "outputStyle" in keys, "statusLine": "statusLine" in keys},
+                                  "not_measured": "managed settings; key names only, the values are not read"}}
+
+
 def overlaps(pieces: dict, limit: int = TOP_OVERLAPS) -> list:
     """Pairs of routing descriptions that share vocabulary. Candidates for a human or model to judge.
 
@@ -1220,6 +1277,7 @@ def build(home: pathlib.Path, project: pathlib.Path, days: int, *, confine: bool
         "skill_listing_cap": cap, "instruction_mode": mode,
         "fixed_context_est_tokens": {**fixed, "total": sum(fixed.values())},
         "instruction_files": instr, **pieces, "plugins": plugins, "settings": settings,
+        "features": features_in_use(pieces, settings, plugins, config_path.is_file() if scan.allowed(config_path) else False),
         "description_overlaps": overlaps(pieces),
         "usage": hist, "never_invoked_in_window": never,
         "spawned_without_definition_here": spawned_elsewhere,
@@ -1363,12 +1421,33 @@ def _compare_lines(before: dict, after: dict) -> str:
     windows =(as_dict(before.get("usage")).get("window_days"), as_dict(after.get("usage")).get("window_days"))
     same_window = windows[0] == windows[1]
 
+    both_have_features = "features" in before and "features" in after  # an older baseline has none: its feature rows are left out
+    events = sorted(set(as_dict(as_dict(as_dict(before.get("features")).get("hooks_by_event")).get("value")))
+                    | set(as_dict(as_dict(as_dict(after.get("features")).get("hooks_by_event")).get("value"))))
+
     def pick(doc: dict) -> dict:
         use = doc.get("usage") or {}
         total = use.get("tokens_total", {})
         rows = {f"fixed context: {k} (est. tokens)": v for k, v in doc["fixed_context_est_tokens"].items()}
         rows.update({"skills": len(doc["skills"]), "agents": len(doc["agents"]), "hooks": len(doc["settings"]["hooks"]),
                      "description overlaps to review": len(doc["description_overlaps"])})
+        if both_have_features:
+            def value(key: str):
+                return as_dict(as_dict(doc["features"]).get(key)).get("value")
+
+            for kind, count in as_dict(value("permission_rules")).items():
+                rows[f"permission rules ({kind})"] = count
+            for field, counts in as_dict(value("agents_frontmatter_fields")).items():
+                if isinstance(counts, dict):
+                    rows[f"agents with {field} set"] = counts.get("set")
+            for flag, count in as_dict(value("skills_frontmatter_flags")).items():
+                if flag != "total":
+                    rows[f"skills: {flag.replace('_', '-')}"] = count
+            for key, label in (("path_scoped_rules", "path-scoped rules"), ("mcp_servers", "MCP servers"), ("enabled_plugins", "enabled plugins")):
+                rows[label] = value(key)
+            by_event = as_dict(value("hooks_by_event"))
+            for event in events:
+                rows[f"hooks on {event}"] = by_event.get(event, 0)
         if use and same_window:
             rows.update({
                 "main sessions in window": use["sessions"]["main"], "requests in window": total.get("requests", 0),
