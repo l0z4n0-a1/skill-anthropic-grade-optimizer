@@ -61,9 +61,10 @@ The file given to `--compare` must satisfy all of the following, or the run exit
 - It is readable JSON, and an object.
 - `kind` is `"setup"`.
 - `schema_version` equals the version the script writes (1).
-- `fixed_context_est_tokens` is an object, `skills` and `agents` and `description_overlaps` are lists, and `settings` is an object.
+- `fixed_context_est_tokens` is an object, `skills` and `agents` and `description_overlaps` are lists, and `settings` is an object with `hooks`.
+- `generated`, `read_scope` and `user_config` are present; when `usage` is present, every number and list the comparison reads has the right type. A baseline written before 2.1.0 lacks these and is refused; measure it again.
 
-After the new measurement is made, `home` and `project` of the baseline must equal those of the new run (compared with the platform's case rules). A different pair exits 2.
+After the new measurement is made, and before anything is written to `--out`, the baseline must match the new run in `home` and `project` (compared with the platform's case rules), in whether `--no-external-reads` was used, and in the `.claude.json` that was read (`user_config.path`). Any difference exits 2 with `--out` untouched, because the inventories would differ for reasons other than a change to the setup.
 
 If the two runs used different history windows (`usage.window_days`), the usage rows are left out of the comparison and the output says so. Measure again with the same `--days`. The comparison is printed after the summary. It is not written to `--out`.
 
@@ -158,7 +159,7 @@ Names in history are matched to pieces by qualified name (`plugin:skill`). A bar
 | `piece_type` | `"skill"` or `"agent"` | never |
 | record fields | the same fields as an entry of `skills` or `agents`, at the top level; `scope` is `"standalone"` | never |
 | `bundled` | `{folder: {files, est_tokens}}` for `.md` and `.txt` files in subfolders of the skill folder | agents |
-| `estimate_note`, `policy` | as in the setup report | never |
+| `estimate_note`, `policy`, `read_scope` | as in the setup report; under `--no-external-reads` a piece file that resolves outside its own folder is refused (exit 2), and bundled files behind links that lead out are not counted | never |
 | `not_measured` | list of strings; includes that history is not read and that `skillListingMaxDescChars` and `skillOverrides` of the destination setup are not applied | never |
 | `unreadable` | list of strings | empty list |
 
@@ -253,7 +254,7 @@ JSON output (no `schema_version`):
 #### What it checks
 
 - `kb/sources.json` is a list; each entry has a unique id, exactly one locator, a valid tier and a non-empty topic (section 3.2).
-- `kb/snapshots.lock.json` entries are well formed and name known sources (section 3.5). `kb/index.lock.json` and `kb/pending.json` have the right shape (sections 3.6 and 3.7). A source named in `pending.json` must exist in `sources.json`.
+- `kb/snapshots.lock.json` entries are well formed, name known sources, and record the same locator the source has in `sources.json` (section 3.5). `kb/index.lock.json` and `kb/pending.json` have the right shape (sections 3.6 and 3.7). A source named in `pending.json` must exist in `sources.json`.
 - Each claim line is valid JSON with all required fields, in the right types and with allowed values (section 3.1).
 - Each claim id is unique across all of `kb/claims/`.
 - Each claim's source exists in `sources.json`.
@@ -292,19 +293,19 @@ If a response body starts with `<!doctype` or `<html`, it is reduced to its read
 
 A `path` source is read relative to the repository root, not the current directory, unless it is absolute. A `bundled` source is read from `--bundled-dir`.
 
-All downloads happen before anything is written, so a failure while downloading leaves the files as they were. Files are written to a temporary file in the same folder and then moved into place.
+All downloads finish before anything is written. A source whose download failed is left as it was; the sources that downloaded are still written, and the run exits 1. Each file is written to a temporary file in the same folder and then moved into place.
 
 | Option | Argument | Default | Meaning |
 |---|---|---|---|
 | `--only` | `ID[,ID...]` | all sources | Fetch only these source ids. An unknown id exits 2. |
-| `--bundled-dir` | `DIR` | none | Directory of the `claude-api` skill bundled with Claude Code, for sources marked `bundled`. Without it, those sources fail. |
+| `--bundled-dir` | `DIR` | none | Directory of Anthropic's `claude-api` skill (`skills/claude-api` in a clone of anthropics/skills), for sources marked `bundled`. Without it, those sources fail. |
 | `--list` | `URL` | none | Print the URL's body to stdout and write nothing. Used to discover index pages. When given, no source is fetched. |
 
 What a run does for each selected source:
 
 - Hash equals the lock entry and the local snapshot matches: counted as unchanged.
 - Hash equals the lock entry but the local snapshot is missing or differs: the snapshot is rewritten from the download (restored).
-- Hash differs, or the source has no lock entry: the snapshot and the lock entry are written. If the source already had a lock entry, its id is also recorded in `kb/pending.json`, and the previous snapshot is copied to `kb/snapshots-prev/<id>.md` if the local file existed and matched the lock. A source with no lock entry is new and is not pending.
+- Hash differs, or the source has no lock entry: the snapshot and the lock entry are written. If the source already had a lock entry, its id is also recorded in `kb/pending.json`, and the previous snapshot is copied to `kb/snapshots-prev/<id>.md` if the local file existed and matched the lock. While a source is already pending, an existing previous copy is kept and no new one is made, so the diff stays against the last reviewed text. A source with no lock entry is new and is not pending.
 - Download failed: reported, the other sources are still written, and the failed source keeps its lock entry.
 
 Text output: `changed=N unchanged=N restored=N failed=N`, then one line per changed (`+`), restored (`=`) and failed (`!`) source. A line lists any source with no previous snapshot to diff against; read those whole. There is no JSON mode.
@@ -339,7 +340,7 @@ Run it as `python -B` to avoid writing bytecode. The script also sets that flag 
 | `--reviewed` | `ID[,ID...]` or `all` | none | Take source ids or page URLs off `pending.json`. Takes no other option. |
 | `--only` | `ID[,ID...]` | all sources | Compare only these source ids. The indexes are then not checked, and pending page lists are left out of the report. |
 | `--bundled-dir` | `DIR` | none | Directory of the `claude-api` skill. Needed to compare `bundled` and `path` sources; without it they are reported under `not_checked` and counted in `not_compared`. |
-| `--max-seconds` | `N` | 600 | Time budget for all downloads. A source or index not started in time is reported as failed. `0` means the default. |
+| `--max-seconds` | `N` | 600 | Time budget for all downloads. Each request's timeout is cut to what remains, and a download still running at the deadline is abandoned; a source or index not finished in time is reported as failed. Name resolution cannot be interrupted, so a run can overshoot by that much. `0` means the default. |
 
 #### Modes
 

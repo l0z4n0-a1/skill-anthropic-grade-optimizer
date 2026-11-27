@@ -8,6 +8,7 @@ import datetime as dt
 import hashlib
 import io
 import json
+import os
 import pathlib
 import subprocess
 import sys
@@ -406,7 +407,8 @@ class GateTest(unittest.TestCase):
 
     SNAP = "The cap is 1,536 characters in the skill listing, per the docs."
     SOURCE = {"id": "src", "url": "https://example.com/doc.md", "tier": 1, "topic": "skills"}
-    LOCK = {"src": {"sha256": hashlib.sha256(SNAP.encode("utf-8")).hexdigest(), "bytes": 10, "fetched": "2026-11-27", "source": "u"}}
+    LOCK = {"src": {"sha256": hashlib.sha256(SNAP.encode("utf-8")).hexdigest(), "bytes": 10, "fetched": "2026-11-27",
+                  "source": "https://example.com/doc.md"}}
 
     def run_gate(self, claim, snapshot=SNAP, sources=None, state=None, others=None, only=None):
         """Builds a kb/ in a temp dir and runs main(); `claim` is a dict or a raw line; returns (exit code, parsed --json or None)."""
@@ -550,6 +552,17 @@ class GateTest(unittest.TestCase):
             code, report = self.run_gate(self.GOOD, state=state)
             self.assertEqual(code, 1, label)
 
+    def test_a_lock_entry_must_name_the_locator_the_source_has_now(self):
+        entry = lambda source: {"snapshots.lock.json": {"src": dict(self.LOCK["src"], source=source)}}  # noqa: E731
+        code, report = self.run_gate(self.GOOD, state=entry("https://example.com/old.md"))
+        self.assertEqual(code, 1)
+        self.assertIn("recorded for 'https://example.com/old.md' but sources.json now says 'https://example.com/doc.md'", report["errors"][0])
+        bundled = [{"id": "src", "bundled": "shared/x.md", "tier": 1, "topic": "x"}]
+        self.assertEqual(self.run_gate(self.GOOD, sources=bundled, state=entry("bundled:shared/x.md"))[0], 0)
+        self.assertEqual(self.run_gate(self.GOOD, sources=bundled, state=entry("shared/x.md"))[0], 1)
+        local = [{"id": "src", "path": "notes/x.md", "tier": 1, "topic": "x"}]
+        self.assertEqual(self.run_gate(self.GOOD, sources=local, state=entry("notes/x.md"))[0], 0)
+
     def test_a_snapshot_that_differs_from_the_lock_points_to_the_restoring_commands(self):
         code, report = self.run_gate(self.GOOD, state={"snapshots.lock.json": self.LOCK}, snapshot=self.SNAP + " edited")
         self.assertEqual(code, 1)
@@ -570,7 +583,7 @@ class FetchTest(unittest.TestCase):
         self.kb = self.root / "kb"
         write(self.kb / "sources.json", json.dumps([{"id": "a", "url": self.A, "tier": 1, "topic": "skills"},
                                                     {"id": "b", "url": self.B, "tier": 1, "topic": "skills"}]))
-        self.pages, self.asked = {self.A: b"a first", self.B: b"b first"}, []
+        self.pages, self.asked, self.deadlines = {self.A: b"a first", self.B: b"b first"}, [], []
         self.patch(kb_fetch, "KB", self.kb)
         self.patch(kb_fetch, "http_get", self.fake_get)
         self.patch(kb_fetch, "today_utc", lambda: "2030-01-02")
@@ -580,8 +593,9 @@ class FetchTest(unittest.TestCase):
         self.addCleanup(setattr, obj, name, old)
         setattr(obj, name, value)
 
-    def fake_get(self, url, timeout=60, hosts=None):
+    def fake_get(self, url, timeout=60, hosts=None, deadline=None):
         self.asked.append(url)
+        self.deadlines.append(deadline)
         if url not in self.pages:
             raise urllib.error.URLError(f"no route to {url}")
         return self.pages[url]
@@ -684,15 +698,18 @@ class FetchTest(unittest.TestCase):
         write(self.root / "notes" / "x.md", "local notes")
         self.assertEqual(kb_fetch.read_source({"id": "n", "path": "notes/x.md"}, ""), b"local notes")
 
-    def test_http_get_refuses_a_response_over_the_byte_cap_and_pins_redirects_to_the_hosts_given(self):
+    def fake_net(self, chunks, on_read=None):
+        """Replaces the opener http_get builds: it serves `chunks` one per read(), calling on_read() before each."""
         seen = {}
 
         class Resp:
-            def __init__(self, data):
-                self.data = data
+            def __init__(self):
+                self.left = list(chunks)
 
             def read(self, n=-1):
-                return self.data if n < 0 else self.data[:n]
+                if on_read:
+                    on_read()
+                return self.left.pop(0) if self.left else b""
 
             def __enter__(self):
                 return self
@@ -701,24 +718,55 @@ class FetchTest(unittest.TestCase):
                 return False
 
         class Opener:
-            body = b"x" * 11
-
             def open(self, req, timeout=None):
                 seen["timeout"] = timeout
-                return Resp(self.body)
+                return Resp()
 
         def build(*handlers):
             seen["handlers"] = handlers
             return Opener()
         self.patch(kb_fetch.urllib.request, "build_opener", build)
+        return seen
+
+    def test_http_get_refuses_a_response_over_the_byte_cap_and_pins_redirects_to_the_hosts_given(self):
+        seen = self.fake_net([b"x" * 11])
         self.patch(kb_fetch, "MAX_BYTES", 10)
         with self.assertRaises(OSError) as cm:
             self.REAL_HTTP_GET("https://docs.test/big.md")
         self.assertIn("larger than 10 bytes", str(cm.exception))
         self.assertEqual((seen["handlers"][0].hosts, seen["timeout"]), ({"docs.test"}, kb_fetch.TIMEOUT))
-        Opener.body = b"x" * 10
+        seen = self.fake_net([b"x" * 6, b"x" * 4])
         self.assertEqual(self.REAL_HTTP_GET("https://docs.test/ok.md", hosts={"docs.test", "other.test"}), b"x" * 10)
         self.assertEqual(seen["handlers"][0].hosts, {"docs.test", "other.test"})
+
+    def test_http_get_bounds_the_request_and_the_body_by_the_deadline(self):
+        clock = [100.0]
+        self.patch(kb_fetch, "time", types.SimpleNamespace(monotonic=lambda: clock[0]))
+
+        def slow():
+            clock[0] += 2
+        seen = self.fake_net([b"abcd", b"efgh", b"ijkl"], on_read=slow)
+        with self.assertRaises(TimeoutError) as cm:  # 3 s left: the timeout is cut to 3, and the body is dropped when time runs out
+            self.REAL_HTTP_GET("https://docs.test/slow.md", deadline=103.0)
+        self.assertIn("while https://docs.test/slow.md was downloading", str(cm.exception))
+        self.assertEqual(seen["timeout"], 3.0)
+        seen.clear()
+        with self.assertRaises(TimeoutError) as cm:  # nothing left: no request is made
+            self.REAL_HTTP_GET("https://docs.test/late.md", deadline=clock[0])
+        self.assertEqual((seen, "before" in str(cm.exception)), ({}, True))
+        clock[0] = 100.0
+        self.fake_net([b"abcd"])
+        self.assertEqual(self.REAL_HTTP_GET("https://docs.test/fast.md", deadline=1000.0), b"abcd")
+
+    def test_a_source_changing_again_while_pending_never_gets_the_unreviewed_copy_as_previous(self):
+        self.lock(a=b"a first", b=b"b first")  # no local snapshots: a fresh clone
+        self.pages[self.A] = b"a second"
+        self.fetch("--only", "a")
+        self.assertFalse((self.kb / "snapshots-prev" / "a.md").exists())
+        self.pages[self.A] = b"a third"  # the local file is now "a second", which matches the lock but was never reviewed
+        _, out, _ = self.fetch("--only", "a")
+        self.assertFalse((self.kb / "snapshots-prev" / "a.md").exists())
+        self.assertIn("no previous snapshot to diff against for a", out)
 
     def test_a_redirect_leaves_the_known_hosts_only_with_an_error(self):
         handler = kb_fetch._PinnedRedirect({"docs.test"})
@@ -767,7 +815,7 @@ class UpdateTest(unittest.TestCase):
         write(self.kb / "index.lock.json", json.dumps({self.IDX: ["https://docs.test/one.md", "https://docs.test/two.md"]}))
         self.pages = {self.A: self.page("a"), self.B: self.page("b"), self.C: self.page("c"),
                       self.IDX: b"- [One](https://docs.test/one.md): x\n- [Two](https://docs.test/two.md): y\n"}
-        self.asked = []
+        self.asked, self.deadlines = [], []
         self.patch(kb_update, "KB", self.kb)
         self.patch(kb_update, "INDEXES", (self.IDX,))
         self.patch(kb_fetch, "http_get", self.fake_get)
@@ -778,8 +826,9 @@ class UpdateTest(unittest.TestCase):
         self.addCleanup(setattr, obj, name, old)
         setattr(obj, name, value)
 
-    def fake_get(self, url, timeout=60, hosts=None):
+    def fake_get(self, url, timeout=60, hosts=None, deadline=None):
         self.asked.append(url)
+        self.deadlines.append(deadline)
         if url not in self.pages:
             raise urllib.error.URLError(f"no route to {url}")
         return self.pages[url]
@@ -861,6 +910,11 @@ class UpdateTest(unittest.TestCase):
         self.assertEqual([f["id"] for f in report["failed"]], ["a", "b", self.IDX])
         self.assertIn("time budget of 5 s", report["failed"][0]["error"])
 
+    def test_every_request_gets_the_deadline_of_the_budget(self):
+        self.patch(kb_update, "time", types.SimpleNamespace(monotonic=lambda: 50.0))
+        self.assertEqual(self.report("--max-seconds", "5")[0], 0)
+        self.assertEqual((self.asked, self.deadlines), ([self.A, self.B, self.IDX], [55.0] * 3))
+
     def test_apply_writes_snapshot_and_locks_and_the_default_mode_does_not(self):
         self.pages[self.A] = self.page("a", "second")
         self.pages[self.IDX] += self.THREE
@@ -909,6 +963,24 @@ class UpdateTest(unittest.TestCase):
         self.assertIn("the gate reports", err)
         self.assertIn("kb_gate.py", err)
         self.assertEqual(list(self.pending()["sources"]), ["a"])
+
+    def test_reviewed_looks_at_the_whole_gate_for_errors_but_only_at_the_released_sources_for_snapshots(self):
+        self.pages[self.A] = self.page("a", "second")
+        self.run_update("--apply")  # the bundled source bd has no snapshot here: the gate cannot check it, and a does not depend on it
+        claims = (self.kb / "claims" / "c.jsonl").read_text(encoding="utf-8")
+        write(self.kb / "claims" / "c.jsonl", claims.replace(self.QUOTES["b"], "a sentence that source b does not contain"))
+        code, _, err = self.run_update("--reviewed", "a")  # an error in an unrelated source still refuses
+        self.assertEqual(code, 2)
+        self.assertIn("b-1", err)
+        write(self.kb / "claims" / "c.jsonl", claims)
+        self.assertEqual(self.run_update("--reviewed", "a")[0], 0)
+
+    def test_a_source_changing_again_while_pending_never_gets_the_unreviewed_copy_as_previous(self):
+        self.pages[self.A] = self.page("a", "second")
+        self.assertEqual(self.report("--apply")[1]["no_previous"], ["a"])  # no local snapshot to keep
+        self.pages[self.A] = self.page("a", "third")
+        self.assertEqual(self.report("--apply")[1]["no_previous"], ["a"])
+        self.assertFalse((self.kb / "snapshots-prev" / "a.md").exists())
 
     def test_reviewed_refuses_a_source_whose_snapshot_is_missing(self):
         self.pages[self.A] = self.page("a", "second")
@@ -1158,6 +1230,21 @@ class QueryTest(unittest.TestCase):
         self.assertNotIn("not re-reviewed", self.query("cite", "hooks-003")[1])
         (self.kb / "pending.json").unlink()
         self.assertNotIn("not re-reviewed", self.query("cite", "skills-001")[1])
+
+
+class BytecodeTest(unittest.TestCase):
+    def test_no_script_leaves_a_pycache_when_run_without_dash_B(self):
+        """SECURITY promises these scripts write nothing; an import of a sibling would write scripts/__pycache__."""
+        env = {k: v for k, v in os.environ.items() if k != "PYTHONDONTWRITEBYTECODE"}
+        with tempfile.TemporaryDirectory() as tmp:
+            scripts = pathlib.Path(tmp) / "scripts"
+            scripts.mkdir()
+            for name in ("kb.py", "kb_fetch.py", "kb_gate.py", "kb_update.py"):
+                (scripts / name).write_bytes((ROOT / "scripts" / name).read_bytes())
+            for name in ("kb.py", "kb_fetch.py", "kb_gate.py", "kb_update.py"):
+                out = subprocess.run([sys.executable, str(scripts / name), "--help"], capture_output=True, text=True, env=env)
+                self.assertEqual(out.returncode, 0, name + out.stderr)
+            self.assertEqual(sorted(p.name for p in scripts.iterdir()), ["kb.py", "kb_fetch.py", "kb_gate.py", "kb_update.py"])
 
 
 class RepositoryKnowledgeBaseTest(unittest.TestCase):

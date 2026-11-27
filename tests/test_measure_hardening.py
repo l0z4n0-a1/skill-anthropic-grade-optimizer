@@ -379,6 +379,56 @@ class ComparisonAndCommandLineTest(Isolated):
         with self.assertRaises(measure.InputError):
             measure.compare({**doc, "skills": "damaged"}, doc)
 
+    def test_a_baseline_missing_a_key_is_refused_before_anything_is_written(self):
+        write(self.base / "marker", "")
+        self.transcript("s", [usage_row(iso(dt.datetime.now(dt.timezone.utc)), "a", out=5)])
+        good = self.build(days=30)
+        damaged = {
+            "no generated": {k: v for k, v in good.items() if k != "generated"},
+            "settings without hooks": {**good, "settings": {k: v for k, v in good["settings"].items() if k != "hooks"}},
+            "hooks not a list": {**good, "settings": {**good["settings"], "hooks": 3}},
+            "no never_invoked": {k: v for k, v in good.items() if k != "never_invoked_in_window"},
+            "no sessions": {**good, "usage": {k: v for k, v in good["usage"].items() if k != "sessions"}},
+            "text where a number goes": {**good, "fixed_context_est_tokens": {"total": "many"}},
+            "no read_scope": {k: v for k, v in good.items() if k != "read_scope"},
+        }
+        for label, doc in damaged.items():
+            baseline = write(self.base / "damaged.json", json.dumps(doc))
+            out = self.base / "new.json"
+            code, stdout, err = self.cli("--home", self.home, "--project", self.project, "--days", 30, "--out", out, "--compare", baseline)
+            self.assertEqual(code, 2, f"{label}: {err}")
+            self.assertIn("damaged", err, label)
+            self.assertFalse(out.exists(), f"{label}: --out was written before the baseline was refused")
+            self.assertEqual(stdout, "", label)
+        baseline = write(self.base / "good.json", json.dumps(good))
+        code, _, err = self.cli("--home", self.home, "--project", self.project, "--days", 30, "--out", self.base / "new.json",
+                                "--compare", baseline)
+        self.assertEqual(code, 0, err)
+
+    def test_measurements_with_different_read_scopes_are_not_compared(self):
+        write(self.base / "CLAUDE.md", "above the project")
+        write(self.project / "CLAUDE.md", "in the project")
+        open_scope = self.measure_to("open.json")
+        confined = self.measure_to("confined.json", "--no-external-reads")
+        for baseline, extra in ((open_scope, ("--no-external-reads",)), (confined, ())):
+            out = self.base / "never.json"
+            code, stdout, err = self.cli("--home", self.home, "--project", self.project, "--days", 0, "--compare", baseline,
+                                         "--out", out, *extra)
+            self.assertEqual(code, 2, err)
+            self.assertIn("different read scopes", err)
+            self.assertFalse(out.exists())
+        code, out, err = self.cli("--home", self.home, "--project", self.project, "--days", 0, "--compare", confined,
+                                  "--no-external-reads")
+        self.assertEqual((code, "no measured difference" in out), (0, True), err)
+
+    def test_measurements_that_read_different_user_configs_are_not_compared(self):
+        baseline = self.measure_to("b.json")
+        other = write(self.base / "other.json", json.dumps({"mcpServers": {"x": {}}}))
+        code, _, err = self.cli("--home", self.home, "--project", self.project, "--days", 0, "--compare", baseline,
+                                "--user-config", other)
+        self.assertEqual(code, 2)
+        self.assertIn("different user-level .claude.json", err)
+
     def test_a_different_window_leaves_the_usage_rows_out_and_says_so(self):
         write(self.base / "marker", "")
         self.transcript("s", [usage_row(iso(dt.datetime.now(dt.timezone.utc)), "a", out=5)])
@@ -448,6 +498,27 @@ class ComparisonAndCommandLineTest(Isolated):
             self.assertEqual(out.stat().st_mode & 0o077, 0)
         self.assertIn("ACL", measure.__doc__)  # where modes do not apply, the docstring says what does
 
+    def test_an_existing_report_is_restricted_before_the_new_content_goes_in(self):
+        out = write(self.base / "r.json", "OLD")
+        seen = []
+
+        def fchmod(fd, mode):  # what is in the file at the moment its mode is restricted
+            seen.append((mode, out.read_text(encoding="utf-8")))
+
+        with mock.patch.object(measure, "HAS_MODES", True), mock.patch.object(os, "fchmod", fchmod, create=True):
+            measure.write_private(out, "NEW-CONTENT")
+        self.assertEqual(seen, [(0o600, "OLD")])  # restricted while it still held only the old text, never after the new one
+        self.assertEqual(out.read_text(encoding="utf-8"), "NEW-CONTENT")
+        measure.write_private(out, "SHORT")  # shorter text leaves nothing of the longer one behind
+        self.assertEqual(out.read_text(encoding="utf-8"), "SHORT")
+
+    @unittest.skipIf(os.name == "nt", "file modes do not exist on Windows")
+    def test_a_wide_open_report_is_never_rewritten_in_place_with_its_old_mode(self):
+        out = write(self.base / "r.json", "OLD")
+        os.chmod(out, 0o666)
+        measure.write_private(out, "NEW")
+        self.assertEqual(out.stat().st_mode & 0o777, 0o600)
+
     def test_a_report_that_cannot_be_written_is_exit_1_after_the_summary(self):
         out = write(self.base / "locked.json", "keep")
         os.chmod(out, 0o444)
@@ -507,6 +578,25 @@ class FrontmatterNotesTest(unittest.TestCase):
 
 
 class ConfinementTest(Isolated):
+    def link_dir(self, link: pathlib.Path, target: pathlib.Path) -> None:
+        try:
+            os.symlink(target, link, target_is_directory=True)
+        except (OSError, NotImplementedError):
+            made = os.name == "nt" and subprocess.run(["cmd", "/c", "mklink", "/J", str(link), str(target)],
+                                                      capture_output=True).returncode == 0  # a junction needs no privilege
+            if not made:
+                self.skipTest("neither symbolic links nor junctions are available here")
+
+    def link_file(self, link: pathlib.Path, target: pathlib.Path) -> None:
+        try:
+            os.symlink(target, link)
+        except (OSError, NotImplementedError):
+            self.skipTest("file symbolic links are not available here (the same check is made without a link below)")
+
+    def subagent_transcript(self) -> pathlib.Path:
+        now = iso(dt.datetime.now(dt.timezone.utc))
+        return write(self.home / "projects" / "p" / "sess" / "subagents" / "agent-1.jsonl", jsonl([usage_row(now, "m", out=5)]))
+
     def test_ancestor_instruction_files_are_read_unless_reads_are_confined(self):
         write(self.base / "CLAUDE.md", "above the project")
         write(self.project / "CLAUDE.md", "in the project")
@@ -528,14 +618,7 @@ class ConfinementTest(Isolated):
 
     def test_a_link_that_leaves_the_scope_is_followed_only_when_not_confined(self):
         write(self.base / "outside" / "target.md", "elsewhere")
-        link = self.project / "linked"
-        try:
-            os.symlink(self.base / "outside", link, target_is_directory=True)
-        except (OSError, NotImplementedError):
-            made = os.name == "nt" and subprocess.run(["cmd", "/c", "mklink", "/J", str(link), str(self.base / "outside")],
-                                                      capture_output=True).returncode == 0  # a junction needs no privilege
-            if not made:
-                self.skipTest("neither symbolic links nor junctions are available here")
+        self.link_dir(self.project / "linked", self.base / "outside")
         write(self.project / "CLAUDE.md", "@linked/target.md")
         self.assertEqual(len([f for f in self.build()["instruction_files"] if f["imported_by"]]), 1)
         self.assertEqual(len([f for f in self.build(confine=True)["instruction_files"] if f["imported_by"]]), 0)
@@ -554,6 +637,59 @@ class ConfinementTest(Isolated):
         self.assertEqual(self.build(confine=True)["settings"]["mcp_servers"], [])
         named = (self.home.parent / ".claude.json", "--user-config")
         self.assertEqual([s["name"] for s in self.build(confine=True, user_config=named)["settings"]["mcp_servers"]], ["beside"])
+
+    def test_a_subagent_sidecar_that_is_a_link_out_of_scope_is_not_read_when_confined(self):
+        self.subagent_transcript()
+        outside = write(self.base / "outside" / "real.meta.json", json.dumps({"agentType": "planted"}))
+        self.link_file(self.home / "projects" / "p" / "sess" / "subagents" / "agent-1.meta.json", outside)
+        self.assertIn("planted", self.build(days=30)["usage"]["agent_runs"])
+        doc = self.build(days=30, confine=True)
+        self.assertEqual(list(doc["usage"]["agent_runs"]), ["(unknown)"])
+        self.assertTrue(any(p.endswith("agent-1.meta.json") for p in doc["read_scope"]["skipped_outside_scope"]))
+
+    def test_the_subagent_sidecar_goes_through_the_scanner(self):
+        # the same check with no link: the scanner is told the sidecar is outside, and the file must stay unread
+        self.subagent_transcript()
+        write(self.home / "projects" / "p" / "sess" / "subagents" / "agent-1.meta.json", json.dumps({"agentType": "planted"}))
+        self.assertIn("planted", self.build(days=30, confine=True)["usage"]["agent_runs"])  # inside the scope: read
+        real_inside = measure.Scan.inside
+        with mock.patch.object(measure.Scan, "inside", lambda scan, p: not p.name.endswith(".meta.json") and real_inside(scan, p)):
+            doc = self.build(days=30, confine=True)
+            unconfined = self.build(days=30)
+        self.assertEqual(list(doc["usage"]["agent_runs"]), ["(unknown)"])
+        self.assertIn("planted", unconfined["usage"]["agent_runs"])
+
+    def test_a_piece_is_confined_before_anything_is_opened(self):
+        skill = write(self.base / "s" / "SKILL.md", SKILL.format(name="s", desc="x"))
+        real_inside = measure.Scan.inside
+        opened = mock.Mock(side_effect=AssertionError("the file was opened before the scope check"))
+        with mock.patch.object(measure.Scan, "inside", lambda scan, p: p.name != "SKILL.md" and real_inside(scan, p)), \
+                mock.patch.object(pathlib.Path, "read_bytes", opened), mock.patch.object(pathlib.Path, "read_text", opened):
+            with self.assertRaises(measure.InputError) as caught:
+                measure.piece(skill.parent, confine=True)
+        self.assertIn("--no-external-reads", str(caught.exception))
+        opened.assert_not_called()
+        self.assertEqual(measure.piece(skill.parent, confine=False)["name"], "s")
+
+    def test_a_piece_whose_skill_file_is_a_link_out_of_its_folder_is_refused_when_confined(self):
+        outside = write(self.base / "outside" / "SKILL.md", SKILL.format(name="far", desc="x"))
+        (self.base / "s").mkdir()
+        self.link_file(self.base / "s" / "SKILL.md", outside)
+        self.assertEqual(measure.piece(self.base / "s")["name"], "far")
+        with self.assertRaises(measure.InputError):
+            measure.piece(self.base / "s", confine=True)
+        code, _, err = self.cli("--piece", self.base / "s", "--no-external-reads")
+        self.assertEqual(code, 2, err)
+
+    def test_bundled_text_behind_a_link_out_of_the_folder_is_not_counted_when_confined(self):
+        write(self.base / "s" / "SKILL.md", SKILL.format(name="s", desc="x"))
+        write(self.base / "s" / "references" / "own.md", "a" * 40)
+        write(self.base / "outside" / "far.md", "b" * 4000)
+        self.link_dir(self.base / "s" / "linked", self.base / "outside")
+        doc = measure.piece(self.base / "s", confine=True)
+        self.assertEqual(doc["bundled"], {"references": {"files": 1, "est_tokens": 10}})
+        self.assertTrue(doc["read_scope"]["confine_external_reads"])
+        self.assertNotIn("linked", doc["bundled"])
 
 
 if __name__ == "__main__":

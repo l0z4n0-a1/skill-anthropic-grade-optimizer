@@ -42,16 +42,19 @@ python scripts/kb_fetch.py --bundled-dir <claude-api skill directory>
 python scripts/kb_gate.py
 ```
 
-Six sources are files of the `claude-api` skill that ships with Claude Code.
-Its directory is printed as "Base directory for this skill" when that skill
-loads in a Claude Code session. Without `--bundled-dir`, those six are not
-fetched and the gate exits 3, naming the snapshots it could not find: the
-other claims were checked, and the 135 that rest on the bundled sources were
-not.
+Six sources are files of Anthropic's `claude-api` skill. Pass the skill's
+directory as `--bundled-dir`: a clone of
+[anthropics/skills](https://github.com/anthropics/skills) has it at
+`skills/claude-api`, and in a Claude Code session that loads the skill it is
+printed as "Base directory for this skill". Without `--bundled-dir`, those six
+are not fetched. If every other claim passes, the gate then exits 3 and names
+the snapshots it could not find: the 135 claims on the bundled sources were
+not checked. A failing claim still exits 1 first.
 
-If a source changed since the lock was written, `kb_fetch.py` records it in
-`kb/pending.json`. That is expected on a fresh clone and is not yours to
-clear unless your change is the update itself.
+`kb/pending.json` is not in the repository while nothing awaits review. If a
+source changed after the release you cloned, `kb_fetch.py` creates the file
+and lists that source. That is not yours to clear unless your change is the
+update itself.
 
 To check only the file you edited, pass it: `python scripts/kb_gate.py
 kb/claims/hooks.jsonl`. That is a quick look, not the gate; a pull request
@@ -67,9 +70,13 @@ needs the full run to exit 0.
    records in that file use and the next unused number; the gate rejects a
    duplicate id anywhere in the knowledge base.
 3. Run the full gate.
-4. Have someone or something that did not write the claim read it against the
-   source, and say in the pull request who or what that was. A quote that is
-   present does not show the claim says what the source says.
+4. Have a reader who did not write the claim check it against the source: a
+   person, or a model session that sees only the claim, its quote and the
+   source page, not your reasoning. The question for them is whether the
+   claim says more than, less than, or something other than the quote. Say in
+   the pull request who or what that was. A quote that is present does not
+   show the claim says what the source says. If you cannot arrange this, say
+   so and a maintainer will.
 5. Commit the claim file with `kb/sources.json`, `kb/snapshots.lock.json`
    and, when they changed, `kb/index.lock.json` and `kb/pending.json`.
 

@@ -15,7 +15,7 @@ Out: a report on stdout, as text or with --json as one object (also written to -
                        hash differs from the lock; `new` means the source has no lock entry.
        pending         {sources: [{id, since, claims, core_or_harness_ids}], new_pages: [{url, since}],
                        removed_pages: [{url, since}]}: fetched earlier, not yet released by --reviewed.
-       unchanged [id]; failed [{id, erro}] (a source id or an index url); not_checked [{id, motivo}];
+       unchanged [id]; failed [{id, error}] (a source id or an index url); not_checked [{id, reason}];
        not_compared {sources, claims}: bundled or local sources skipped for want of --bundled-dir,
                        and the claims that rest on them.
        new_pages, removed_pages [{index, url}]; no_index_baseline [index url];
@@ -61,8 +61,9 @@ Usage: kb_update.py [--json] [--out FILE] [--apply [--partial]] [--only ID[,ID..
        kb_update.py --reviewed ID[,ID...]|all
 Network: GET requests only, to the hosts of the urls in kb/sources.json and of INDEXES, with the fixed
 User-Agent of kb_fetch, a timeout of kb_fetch.TIMEOUT seconds per request, at most kb_fetch.MAX_BYTES per
-response, and --max-seconds in all (a source not started in time is reported as failed). A redirect to any
-other host is refused. No review data, claim, setup or local path is sent; the host still sees what any
+response, and --max-seconds in all: each request's timeout is cut to what is left of the budget and a body
+still arriving at the deadline is abandoned, so the run ends near it (a source not started or not finished in
+time is reported as failed; name resolution is not interruptible). A redirect to any other host is refused. No review data, claim, setup or local path is sent; the host still sees what any
 connection shows, such as the IP address. Reading a `bundled` or `path` file is local and sends nothing.
 An index whose response parses into no urls, or into fewer than half of the baseline's, is not accepted as
 the new baseline: it is listed as failed.
@@ -188,7 +189,7 @@ def check(args) -> tuple[dict, dict, dict, dict]:
             report["failed"].append({"id": sid, "error":out_of_time})
             continue
         try:
-            body = kb_fetch.read_source(src, args.bundled_dir, hosts)
+            body = kb_fetch.read_source(src, args.bundled_dir, hosts, deadline)
         except kb_fetch.NET_ERRORS as exc:
             report["failed"].append({"id": sid, "error":str(exc)})
             continue
@@ -215,7 +216,7 @@ def check(args) -> tuple[dict, dict, dict, dict]:
             report["failed"].append({"id": index, "error":out_of_time})
             continue
         try:
-            urls = index_urls(kb_fetch.http_get(index, hosts=hosts))
+            urls = index_urls(kb_fetch.http_get(index, hosts=hosts, deadline=deadline))
             before = index_lock.get(index)
             if not urls or (before and len(urls) * 2 < len(before)):
                 raise ValueError(f"index parsed into {len(urls)} urls (baseline {len(before or [])}); response not accepted")
@@ -368,7 +369,7 @@ def main(argv=None) -> int:
     ap.add_argument("--only", default="", help="comma-separated source ids to compare; the indexes are then not checked")
     ap.add_argument("--bundled-dir", default="", help="claude-api skill directory: also compare `bundled` and `path` sources")
     ap.add_argument("--max-seconds", type=int, default=None,
-                    help=f"time budget for all downloads (default {MAX_SECONDS}); sources not started in time are reported as failed")
+                    help=f"time budget for all downloads, in-flight ones included (default {MAX_SECONDS}); sources not finished in time are reported as failed")
     args = ap.parse_args(argv)
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")

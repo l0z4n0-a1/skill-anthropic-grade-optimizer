@@ -83,8 +83,10 @@ with the same reviewer copy and from a directory outside it, with a request such
 orchestration process in <directory>/process-planted. Do not run or change anything in it." Score against the
 key: defects found out of ten on `process-planted`, false findings on `process-planted`, and
 false findings on `process-clean`. The same caveat holds: one run is one sample. On `process-clean`
-the target is 0 false findings, not 0 findings: a finding is false when it does not hold against the code
-or the records, or when it presents as a defect a cost the key lists as a residue of a sound process. A
+the target is 0 false findings, not 0 findings. Two kinds of error are counted, in separate columns:
+a finding that does not hold against the code or the records (false), and a finding that presents as a
+defect a cost the key lists as a residue of a sound process (residue as defect). The target is 0 in
+both; the table shows rounds 2 and 4 missed it on the second. A
 true finding the key does not know, that the owner of the process would change, is a defect of the
 fixture: fix it in the builder and recompute the counts in the key; if the owner would not change it,
 add it to the key's residues.

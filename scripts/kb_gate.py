@@ -23,7 +23,8 @@ different scope strings; nothing here resolves one to the other). The id is `<pr
 and unique across all of kb/claims/ even when only some files are checked.
 sources.json: a list of {id, tier, topic, and exactly one of url, bundled, path}; ids are unique,
 lower-case letters, digits and hyphens; tier is 1, 2 or 3.
-snapshots.lock.json: {source id: {sha256, bytes, fetched (YYYY-MM-DD), source}}.
+snapshots.lock.json: {source id: {sha256, bytes, fetched (YYYY-MM-DD), source}}, where `source` is the
+source's url or path, or bundled:<file>, as sources.json gives it now.
 index.lock.json: {index url: [page urls]}. pending.json: {sources: {source id: date},
 new_pages: {url: date}, removed_pages: {url: date}}.
 
@@ -111,10 +112,11 @@ def _is_date(value) -> bool:
         return False
 
 
-def check_sources(kb: pathlib.Path, errors: list[str]) -> set[str]:
-    """Validate sources.json; returns the ids with a usable shape."""
+def check_sources(kb: pathlib.Path, errors: list[str]) -> dict[str, str | None]:
+    """Validate sources.json; returns {id: the `source` text its lock entry must carry (url, path or bundled:<file>), or None
+    when the locator is unusable} for the ids with a usable shape."""
     raw = _load(kb / "sources.json", errors, required=True)
-    ids: set[str] = set()
+    ids: dict[str, str | None] = {}
     if raw is None:
         return ids
     if not isinstance(raw, list):
@@ -132,7 +134,7 @@ def check_sources(kb: pathlib.Path, errors: list[str]) -> set[str]:
         if sid in ids:
             errors.append(f"{where} duplicate source id {sid}")
             continue
-        ids.add(sid)
+        ids[sid] = None
         found = [k for k in LOCATORS if k in src]
         if len(found) != 1:
             errors.append(f"{where} {sid} needs exactly one of {', '.join(LOCATORS)} (has {found or 'none'})")
@@ -140,6 +142,8 @@ def check_sources(kb: pathlib.Path, errors: list[str]) -> set[str]:
             errors.append(f"{where} {sid} {found[0]} must be a non-empty string")
         elif found[0] == "url" and not src["url"].startswith(("https://", "http://")):
             errors.append(f"{where} {sid} url must start with https:// or http://")
+        else:
+            ids[sid] = src[found[0]] if found[0] != "bundled" else f"bundled:{src['bundled']}"
         if isinstance(src.get("tier"), bool) or src.get("tier") not in TIERS:
             errors.append(f"{where} {sid} tier must be one of {sorted(TIERS)} (got {src.get('tier')!r})")
         if not isinstance(src.get("topic"), str) or not src["topic"].strip():
@@ -147,7 +151,7 @@ def check_sources(kb: pathlib.Path, errors: list[str]) -> set[str]:
     return ids
 
 
-def check_state(kb: pathlib.Path, ids: set[str], errors: list[str]) -> dict:
+def check_state(kb: pathlib.Path, ids: dict[str, str | None], errors: list[str]) -> dict:
     """Validate the two locks and pending.json when they exist; returns the snapshot lock ({} if unusable)."""
     lock = _load(kb / "snapshots.lock.json", errors)
     if lock is not None and not isinstance(lock, dict):
@@ -168,6 +172,9 @@ def check_state(kb: pathlib.Path, ids: set[str], errors: list[str]) -> dict:
             errors.append(f"{where}: fetched must be a YYYY-MM-DD date")
         if not isinstance(entry.get("source"), str):
             errors.append(f"{where}: source must be a string")
+        elif ids.get(sid) is not None and entry["source"] != ids[sid]:
+            errors.append(f"{where}: recorded for {entry['source']!r} but sources.json now says {ids[sid]!r}; the hash is of a "
+                          "different document, so fetch the source again (kb_update.py --apply)")
     index = _load(kb / "index.lock.json", errors)
     if index is not None and not (isinstance(index, dict) and all(
             isinstance(k, str) and isinstance(v, list) and all(isinstance(u, str) for u in v) for k, v in index.items())):

@@ -25,8 +25,8 @@ Usage: kb_fetch.py [--only ID[,ID...]] [--bundled-dir DIR] [--list URL]
   --bundled-dir DIR  where the claude-api skill bundled with Claude Code is, for sources marked `bundled`.
   --list URL         print the URL's body to stdout (used to discover index pages) and write nothing.
 A source `path` is read relative to the repository root, not to the current directory.
-Network: GET only, a fixed generic User-Agent, a timeout of TIMEOUT seconds per request and at most
-MAX_BYTES per response. A redirect is followed only to a host of the urls in kb/sources.json (for
+Network: GET only, a fixed generic User-Agent, a timeout of TIMEOUT seconds per request (kb_update.py
+bounds it by its --max-seconds budget) and at most MAX_BYTES per response. A redirect is followed only to a host of the urls in kb/sources.json (for
 --list, to the host of the URL given) and never from https to http. Nothing about the machine or the
 review is sent, though a server sees the connection's address. Stdlib only.
 """
@@ -43,6 +43,7 @@ import pathlib
 import re
 import sys
 import tempfile
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -52,6 +53,7 @@ KB = ROOT / "kb"
 UA = "kb-fetch/1.0 (documentation snapshot)"
 TIMEOUT = 60
 MAX_BYTES = 5_000_000
+CHUNK = 65536
 NET_ERRORS = (urllib.error.URLError, OSError, TimeoutError, http.client.HTTPException, ValueError)
 
 
@@ -82,14 +84,30 @@ def hosts_of(urls) -> set[str]:
     return {h.lower() for h in (urllib.parse.urlparse(u).hostname for u in urls) if h}
 
 
-def http_get(url: str, timeout: int = TIMEOUT, hosts=None) -> bytes:
+def http_get(url: str, timeout: float = TIMEOUT, hosts=None, deadline=None) -> bytes:
+    """GET `url`. `deadline` is an absolute time.monotonic() value: the request's timeout is cut to what is
+    left of it, and a body still arriving when it passes is abandoned (TimeoutError). The socket timeout
+    alone would restart with every chunk received."""
+    if deadline is not None:
+        left = deadline - time.monotonic()
+        if left <= 0:
+            raise TimeoutError(f"time budget used up before {url} was requested")
+        timeout = min(timeout, left)
     req = urllib.request.Request(url, headers={"User-Agent": UA, "Accept": "text/markdown, text/plain, */*"})
     opener = urllib.request.build_opener(_PinnedRedirect(hosts if hosts is not None else hosts_of([url])))
+    chunks, size = [], 0
     with opener.open(req, timeout=timeout) as resp:
-        body = resp.read(MAX_BYTES + 1)
-    if len(body) > MAX_BYTES:
-        raise OSError(f"{url} is larger than {MAX_BYTES} bytes; refusing it")
-    return body
+        while True:
+            chunk = resp.read(CHUNK)
+            if not chunk:
+                break
+            chunks.append(chunk)
+            size += len(chunk)
+            if size > MAX_BYTES:
+                raise OSError(f"{url} is larger than {MAX_BYTES} bytes; refusing it")
+            if deadline is not None and time.monotonic() > deadline:
+                raise TimeoutError(f"time budget used up while {url} was downloading")
+    return b"".join(chunks)
 
 
 class _Text(html.parser.HTMLParser):
@@ -125,7 +143,7 @@ def html_to_text(body: bytes) -> bytes:
     return re.sub(r"\n\s*\n+", "\n\n", text).strip().encode("utf-8")
 
 
-def read_source(src: dict, bundled_dir: str, hosts=None) -> bytes:
+def read_source(src: dict, bundled_dir: str, hosts=None, deadline=None) -> bytes:
     """A source is a URL, a local path (relative to the repository root), or a file of the claude-api skill bundled with Claude Code."""
     if "bundled" in src:
         if not bundled_dir:
@@ -134,7 +152,7 @@ def read_source(src: dict, bundled_dir: str, hosts=None) -> bytes:
     if "path" in src:
         path = pathlib.Path(src["path"]).expanduser()
         return (path if path.is_absolute() else KB.parent / path).read_bytes()
-    body = http_get(src["url"], hosts=hosts)
+    body = http_get(src["url"], hosts=hosts, deadline=deadline)
     if body.lstrip()[:15].lower().startswith((b"<!doctype", b"<html")):
         return html_to_text(body)
     return body
@@ -179,8 +197,9 @@ def record_changes(kb: pathlib.Path, lock: dict, changed: list[str], new_pages=(
 
     Marks in kb/pending.json every changed source that already had a lock entry (a source with
     none is new) and every new or removed page, then keeps each such source's previous snapshot in
-    kb/snapshots-prev/ when the local file matches the lock. A source already pending keeps the
-    older copy, so the diff runs against what was last reviewed. Returns the ids with no usable
+    kb/snapshots-prev/ when the local file matches the lock. A source already pending is never given
+    a new copy (the local file is then an unreviewed download): it keeps the older one, so the diff
+    runs against what was last reviewed, or has none. Returns the ids with no usable
     previous snapshot: the reviewer must read those sources whole, not as a diff.
     """
     today = today or today_utc()
@@ -197,7 +216,10 @@ def record_changes(kb: pathlib.Path, lock: dict, changed: list[str], new_pages=(
     no_previous = []
     for sid in tracked:
         prev, local = kb / "snapshots-prev" / f"{sid}.md", kb / "snapshots" / f"{sid}.md"
-        if sid in already and prev.exists():
+        if sid in already:
+            # Pending: whatever is local now is an unreviewed download, never a baseline. Keep the older copy, or say there is none.
+            if not prev.exists():
+                no_previous.append(sid)
             continue
         if local.exists() and sha(local.read_bytes()) == lock[sid].get("sha256"):
             atomic_write(prev, local.read_bytes())

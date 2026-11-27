@@ -80,8 +80,8 @@ quote is in its source. It does not prove the claim says what the source says,
 and extraction drifts in predictable ways: an option becomes a rule, a
 condition is dropped, a result on one benchmark becomes a statement about a
 model, a sample configuration's model becomes `applies_to`, a `check` flags
-something the source never called a problem. Give the new claims, or a random
-sample of at least forty when there are hundreds, to a reader that did not
+something the source never called a problem. Give the new and corrected claims, or a
+random sample of forty when there are more than forty, to a reader that did not
 write them. For each claim it opens the snapshot at the quote, reads the
 section, and answers supported, overstated, unsupported or wrong scope,
 naming the field at fault and the source text that shows it. If more than

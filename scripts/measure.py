@@ -21,8 +21,10 @@ Modes and combinations:
   --piece PATH          only --out and --no-external-reads; --home, --project, --days, --user-config
                         and --compare describe a setup and are refused with --piece
   --out and --compare   must name different files: --out would replace the baseline before it is read
-  --compare             the baseline must be a setup JSON of this schema_version, from the same --home and
-                        --project; a different --days window leaves the usage rows out and says so
+  --compare             the baseline must be a complete setup JSON of this schema_version, from the same --home,
+                        --project, read scope (--no-external-reads or not) and .claude.json; it is checked
+                        in full before --out is written, and any mismatch is exit 2 with --out untouched;
+                        a different --days window leaves the usage rows out and says so
 
 Exit codes:
   0  measured; problems with single files are listed under `unreadable`, not fatal
@@ -49,7 +51,7 @@ shares are fractions between 0 and 1 rounded to 4 places, or null when there is 
     frontmatter reader did not interpret) and, for skills, `description_source`.
   piece, top-level keys: schema_version, kind, piece_type ("skill" or "agent"), the record of the piece
     (the same fields as an entry of `skills` or `agents`), bundled (skills only: est_tokens of the .md and
-    .txt files in its subfolders, by folder), estimate_note, policy, not_measured, unreadable.
+    .txt files in its subfolders, by folder), estimate_note, policy, read_scope, not_measured, unreadable.
 `policy` lists the named constants at the top of this file that decide how the report is cut (top-N,
 the Jaccard cutoff for overlaps, text limits, the history window). They are presentation choices, not
 facts about Claude Code; those are in kb/harness.json.
@@ -85,7 +87,8 @@ What it reads (nothing is written except --out, and no network call is made):
   - hook script paths: whether they exist is checked, their contents are not read
 --no-external-reads drops every read whose resolved path is outside --home and --project (ancestor
 directories, imports and symlink targets elsewhere, plugin folders elsewhere, a .claude.json beside
---home unless --user-config names it) and lists what it declined under `read_scope` and `not_measured`.
+--home unless --user-config names it, the sidecar file beside each subagent transcript, a --piece that
+is a link leaving its own folder) and lists what it declined under `read_scope` and `not_measured`.
 
 Privacy: it copies what a review needs and nothing else: the values of a fixed list of frontmatter
 fields and settings, hook definitions (event, matcher, command, timeout and a fixed list of options),
@@ -94,7 +97,8 @@ permission rules, and the names of servers, plugins, models, tools, skills and a
 list. What it copies, it copies as written: a secret typed into a description, a hook command or a
 permission rule appears in the output, so treat the JSON like the files it was read from, and know
 that opening it in a Claude session shows that session every field it kept. With --out the file is
-created with mode 0600 where the system has modes. On Windows that mode has no effect: the file
+created with mode 0600 where the system has modes (an existing file is restricted to 0600 before it is
+emptied and rewritten, so the new content is never in a file others can read). On Windows that mode has no effect: the file
 gets the access rules of its folder (the ACL it inherits), so write it somewhere only you can read.
 
 Stdlib only. Python 3.9+.
@@ -112,6 +116,7 @@ import shlex
 import sys
 
 SCHEMA_VERSION = 1
+HAS_MODES = hasattr(os, "fchmod")  # POSIX file modes; on Windows the folder's ACL decides who can read the report
 CHARS_PER_TOKEN = 4  # an estimating convention, not a fact about Claude Code; every figure from it is labelled an estimate
 # Facts about Claude Code live in kb/harness.json, each tied to the claim that documents it.
 _HARNESS = json.loads((pathlib.Path(__file__).resolve().parent.parent / "kb" / "harness.json").read_text(encoding="utf-8"))
@@ -892,8 +897,11 @@ def usage(home: pathlib.Path, days: int, scan: Scan) -> dict:
     def agent_type_of(path: pathlib.Path) -> str:
         """Claude Code writes a small description beside each subagent transcript; it names the agent type."""
         for suffix in (".meta.json", ".json"):
+            sidecar = path.with_suffix(suffix)
+            if not scan.allowed(sidecar):  # a link here can lead out of --home and --project
+                continue
             try:
-                meta = json.loads(path.with_suffix(suffix).read_text(encoding="utf-8"))
+                meta = json.loads(sidecar.read_text(encoding="utf-8"))
             except (OSError, ValueError, RecursionError):
                 continue
             if isinstance(meta, dict) and isinstance(meta.get("agentType"), str):
@@ -1276,24 +1284,69 @@ def check_baseline_shape(before) -> None:
     if before.get("schema_version") != SCHEMA_VERSION:
         raise InputError(f"the --compare file has schema_version {before.get('schema_version')!r}; this script writes "
                          f"{SCHEMA_VERSION}. Measure again to make a new baseline")
-    for key, kind in (("fixed_context_est_tokens", dict), ("skills", list), ("agents", list), ("settings", dict),
-                      ("description_overlaps", list)):
+
+    def damaged(what: str):
+        raise InputError(f"the --compare file is damaged: {what}")
+
+    def number(value) -> bool:
+        return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+    for key, kind in (("generated", str), ("home", str), ("project", str), ("fixed_context_est_tokens", dict), ("skills", list),
+                      ("agents", list), ("settings", dict), ("description_overlaps", list), ("read_scope", dict),
+                      ("user_config", dict), ("usage", dict)):
         if not isinstance(before.get(key), kind):
-            raise InputError(f"the --compare file is damaged: `{key}` is missing or has the wrong type")
+            damaged(f"`{key}` is missing or has the wrong type")
+    if not all(number(v) for v in before["fixed_context_est_tokens"].values()):
+        damaged("`fixed_context_est_tokens` holds a value that is not a number")
+    if not isinstance(before["settings"].get("hooks"), list):
+        damaged("`settings.hooks` is missing or is not a list")
+    if not isinstance(before["read_scope"].get("confine_external_reads"), bool):
+        damaged("`read_scope.confine_external_reads` is missing or is not true or false")
+    if not isinstance(before["user_config"].get("path"), str):
+        damaged("`user_config.path` is missing or is not text")
+    use = before["usage"]  # {} when the history was not read (--days 0); otherwise every figure compare() reads
+    if use:
+        sessions, total = use.get("sessions"), use.get("tokens_total")
+        never, avg = before.get("never_invoked_in_window"), use.get("avg_prompt_tokens_per_request")
+        if not (isinstance(sessions, dict) and number(sessions.get("main"))):
+            damaged("`usage.sessions.main` is missing or is not a number")
+        if not (isinstance(total, dict) and all(number(v) for v in total.values())):
+            damaged("`usage.tokens_total` is missing or holds a value that is not a number")
+        if not (isinstance(avg, dict) and all(number(v) for v in avg.values())):
+            damaged("`usage.avg_prompt_tokens_per_request` is missing or holds a value that is not a number")
+        if not (isinstance(never, dict) and isinstance(never.get("skills"), list) and isinstance(never.get("agents"), list)):
+            damaged("`never_invoked_in_window` is missing its skills or agents list")
+        for key in ("cache_read_share_of_prompt_tokens", "share_of_spawns_to_agents_defined_here"):
+            if use.get(key) is not None and not number(use[key]):
+                damaged(f"`usage.{key}` is not a number")
 
 
 def check_same_setup(before: dict, after: dict) -> None:
+    """Refuse two measurements that did not read the same things: a different setup or a different read scope."""
     for key in ("home", "project"):
         if os.path.normcase(str(before.get(key))) != os.path.normcase(str(after.get(key))):
             raise InputError(f"the --compare file measured a different {key} ({before.get(key)}) than this run ({after.get(key)}); "
                              f"compare only measurements of the same setup, with the same --home and --project")
+    if before["read_scope"]["confine_external_reads"] != after["read_scope"]["confine_external_reads"]:
+        raise InputError("the --compare file and this run have different read scopes (one used --no-external-reads, the other did not); "
+                         "the difference in files read would show up as a change in the setup. Measure again with the same setting")
+    if os.path.normcase(before["user_config"]["path"]) != os.path.normcase(after["user_config"]["path"]):
+        raise InputError(f"the --compare file read a different user-level .claude.json ({before['user_config']['path']}) than this run "
+                         f"({after['user_config']['path']}); measure again with the same --user-config")
 
 
 def compare(before: dict, after: dict) -> str:
     """What changed between two measurements of the same setup. Raises InputError when they cannot be compared."""
     check_baseline_shape(before)
     check_same_setup(before, after)
-    windows = (as_dict(before.get("usage")).get("window_days"), as_dict(after.get("usage")).get("window_days"))
+    try:
+        return _compare_lines(before, after)
+    except (KeyError, TypeError, AttributeError, ValueError, ArithmeticError) as exc:  # a shape the checks above did not name
+        raise InputError(f"the --compare file is damaged: it could not be read as a measurement ({type(exc).__name__}: {exc})") from exc
+
+
+def _compare_lines(before: dict, after: dict) -> str:
+    windows =(as_dict(before.get("usage")).get("window_days"), as_dict(after.get("usage")).get("window_days"))
     same_window = windows[0] == windows[1]
 
     def pick(doc: dict) -> dict:
@@ -1342,6 +1395,7 @@ def piece(path: pathlib.Path, confine: bool = False) -> dict:
     path = pathlib.Path(path)
     if not path.exists():
         raise InputError(f"no file or folder at {path}")
+    scan = Scan([path if path.is_dir() else path.parent], confine)  # the folder named, or the folder of the file named
     if path.is_dir():
         if not (path / "SKILL.md").is_file():
             raise InputError(f"no SKILL.md in {path}: --piece takes a skill folder (one holding SKILL.md), "
@@ -1351,18 +1405,19 @@ def piece(path: pathlib.Path, confine: bool = False) -> dict:
     if not is_skill and path.suffix.lower() != ".md":
         raise InputError(f"{path.name} is not a skill or a subagent definition: --piece takes a skill folder, "
                          "a SKILL.md file or a subagent .md file")
+    if not scan.allowed(path):  # nothing is opened before this check
+        raise InputError(f"{path} is a link to a file outside its own folder, and --no-external-reads is set")
     try:
         path.read_bytes()
     except OSError as exc:
         raise InputError(f"cannot read {path}: {type(exc).__name__}") from exc
-    scan = Scan([path.parent], confine)
     record = skill_record(path, "standalone", {}, scan) if is_skill else agent_record(path, "standalone", scan)
     out = {"schema_version": SCHEMA_VERSION, "kind": "piece", "piece_type": "skill" if is_skill else "agent", **record}
     if is_skill:
         # text the skill can send its reader to, totalled per folder; none of it loads until it is read
         folders = collections.defaultdict(lambda: {"files": 0, "est_tokens": 0})
         for p in path.parent.rglob("*"):
-            if p.is_file() and p.parent != path.parent and ".git" not in p.parts and p.suffix in (".md", ".txt"):
+            if p.parent != path.parent and ".git" not in p.parts and p.suffix in (".md", ".txt") and scan.is_file(p):
                 entry = folders[p.relative_to(path.parent).parts[0]]
                 entry["files"] += 1
                 entry["est_tokens"] += est_tokens(len(scan.read(p)))
@@ -1370,6 +1425,7 @@ def piece(path: pathlib.Path, confine: bool = False) -> dict:
     out.update({
         "estimate_note": f"est_tokens = characters / {CHARS_PER_TOKEN}; an estimate, not a tokenizer count",
         "policy": POLICY,
+        "read_scope": {"confine_external_reads": confine, "skipped_outside_scope": sorted(set(scan.skipped_outside))[:SKIPPED_SHOWN]},
         "not_measured": [
             f"the listing cost uses the documented cap ({LISTING_CAP} characters); skillListingMaxDescChars and skillOverrides of the setup it will live in are not applied",
             "usage: the session history is not read in this mode",
@@ -1417,11 +1473,18 @@ def make_parser() -> argparse.ArgumentParser:
 
 def write_private(path: pathlib.Path, text: str) -> None:
     """Write the report readable by the current user only where the system has modes (on Windows the folder's ACL applies)."""
-    fd = os.open(str(path), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    with os.fdopen(fd, "w", encoding="utf-8") as handle:
+    # No O_TRUNC: a file that already exists keeps its old mode, so restrict it first and only then empty it.
+    fd = os.open(str(path), os.O_WRONLY | os.O_CREAT, 0o600)
+    try:
+        if HAS_MODES:
+            os.fchmod(fd, 0o600)
+        os.ftruncate(fd, 0)
+        handle = os.fdopen(fd, "w", encoding="utf-8")
+    except BaseException:
+        os.close(fd)
+        raise
+    with handle:
         handle.write(text)
-    if os.name != "nt":
-        os.chmod(path, 0o600)  # a file that already existed keeps its old mode until now
 
 
 def same_file(a: pathlib.Path, b: pathlib.Path) -> bool:
@@ -1487,12 +1550,11 @@ def run(args) -> int:
     config = resolve_user_config(home, args.user_config, env_dir)
     doc = build(home, project, days, confine=args.no_external_reads, user_config=config,
                 user_home=resolve_user_home(home, env_dir))
-    if baseline is not None:
-        check_same_setup(baseline, doc)
+    changes = compare(baseline, doc) if baseline is not None else None  # every refusal comes before anything is written
     status = write_report(out, json.dumps(doc, indent=2, ensure_ascii=False) + "\n")
     print(summary(doc))
-    if baseline is not None:
-        print("\n" + compare(baseline, doc))
+    if changes is not None:
+        print("\n" + changes)
     return status
 
 

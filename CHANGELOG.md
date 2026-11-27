@@ -48,6 +48,9 @@ measures how far the knowledge base itself can be trusted.
 - `kb_update.py --max-seconds`; `schema_version` in its JSON; `no_previous`
   lists changed sources with no trustworthy previous copy to diff against.
 - Plugin icon and README banner.
+- `NOTICE.md` states the basis for each kind of excerpt; the `claude-api`
+  excerpts come from Apache-2.0 files, whose license is now in `LICENSES/`.
+- README: headless and Agent SDK examples, each run before release.
 
 ### Changed
 - Every claim was re-read against its source by a reader from a different
@@ -77,7 +80,11 @@ measures how far the knowledge base itself can be trusted.
   indexes, cap each response at 5 MB, and date provenance in UTC.
 - `measure.py`: effective settings precedence for enabled plugins; timestamps
   parsed with their offset; usage attributed with the plugin namespace;
-  `--compare` validates its baseline and refuses `--out` on the same file;
+  `--compare` validates its baseline completely before writing anything,
+  refuses `--out` on the same file and refuses a baseline taken with
+  different read options (a baseline from 2.0 must be measured again);
+  `--no-external-reads` also confines subagent sidecar and `--piece` reads;
+  `--out` never holds content with a wide file mode;
   invalid input exits 2 with a message instead of a traceback; a Windows hook
   command is no longer split as a POSIX shell line; cache-rebuild causes are
   reported as inferred.

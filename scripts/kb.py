@@ -29,11 +29,14 @@ Spaces around the commas of a list are ignored.
 """
 from __future__ import annotations
 
+import sys
+
+sys.dont_write_bytecode = True  # before kb_gate is imported: reading the knowledge base must not write scripts/__pycache__
+
 import argparse
 import collections
 import json
 import pathlib
-import sys
 
 from kb_gate import REQUIRED, SCOPE
 
