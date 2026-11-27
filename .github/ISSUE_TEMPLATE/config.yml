@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Security issue
+    url: https://github.com/l0z4n0-a1/skill-anthropic-grade-optimizer/blob/main/SECURITY.md
+    about: Report privately, as SECURITY.md describes. Do not open a public issue.
+  - name: Remove a quoted excerpt
+    url: https://github.com/l0z4n0-a1/skill-anthropic-grade-optimizer/blob/main/NOTICE.md
+    about: If you hold rights in a quoted source, NOTICE.md says how to ask for removal.
