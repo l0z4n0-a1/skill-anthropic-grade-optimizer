@@ -3,9 +3,15 @@
 
 Subcommands:
   save --out STORE PATH...   copy each PATH (a file; an absent one is recorded as absent) into a new
-                             timestamped folder under STORE, with manifest.json. Prints the backup folder
-                             and the command that restores it. Never prints file contents.
-  record BACKUP_DIR          after the edits: store the sha256 of each path as it is now (the "post-edit" hash)
+                             timestamped folder under STORE, with manifest.json and a copy of this script
+                             (backup.py), so the restore does not depend on the plugin staying installed.
+                             Prints the backup folder and the command that restores it, quoted for this
+                             platform (PowerShell on Windows). Never prints file contents.
+  record BACKUP_DIR [PATH...]
+                             after an edit: store the sha256 of each named PATH as it is now (the "post-edit"
+                             hash); no PATH means every path in the backup. A PATH the backup does not hold is
+                             refused. Call it after each edit with that edit's path, so an unrelated change
+                             made meanwhile is not adopted as the edit.
   restore BACKUP_DIR [--force]
                              put the originals back; delete the files that did not exist originally
   status BACKUP_DIR          one line per path: original, edited, changed since, or missing
@@ -19,14 +25,17 @@ manifest.json (version 1) lists, for each path: `path` (absolute, symlinks resol
 or "absent", `size`, `mode` (octal text; null when absent), `copy` (name under files/; null when absent) and
 `post_edit_sha256` (null until `record`; "absent" when the edit deleted the file).
 
-restore rules. A file is put back only when its current content is the recorded post-edit content or already
-the original; any other file has been changed since the edit and is refused, all of them listed, and then
-nothing is touched (a half-restored setup is worse than none). --force restores those too. A backup that was not
-`record`ed has no post-edit hash, so only an unchanged-from-original file passes without --force. Each file is
-written to a temporary file in its own folder and moved over the target with os.replace, so a reader never sees
-a half-written file. The copy's hash is checked against the manifest before anything is written. Running
-restore twice is harmless: the second run finds everything original and changes nothing. POSIX modes are put
-back; on Windows only the content is.
+restore rules. Restore is atomic per file, not across files. It first validates every file and refuses
+the whole run, touching nothing, when (a) a path no longer resolves to the canonical path recorded at save (a parent
+folder was replaced by a symlink or junction since; --force does not override this) or (b) a file is neither the
+recorded post-edit content nor already the original (changed since the edit; all are listed; --force restores those
+too). A backup that was not `record`ed has no post-edit hash, so only an unchanged-from-original file passes without
+--force. The copies' hashes are checked against the manifest before anything is written. Only after that does it
+replace the files one by one, each through a temporary file in its own folder and os.replace, so a reader never sees a
+half-written file. If one file then fails (a lock, a permission), the others are still restored, each result is
+printed (`restored:`, `removed:`, `failed:`) and the exit is 1: the setup can be half restored. Running restore
+again finishes it, because a file already original is skipped and a pending one still matches its post-edit hash.
+POSIX modes are put back; on Windows only the content is.
 
 Privacy. The store folder, each backup folder, the copies and manifest.json are created readable by the current
 user only where the system has modes (POSIX 0700 for folders, 0600 for files). On Windows the standard library
@@ -36,9 +45,11 @@ warned about when it is open to others. Files larger than memory are not support
 
 Exit codes:
   0  done (status always exits 0; restore with nothing to do exits 0)
-  1  an I/O error, or a backup copy that does not match its recorded hash (nothing was restored from it)
-  2  the command line or the backup cannot be used: bad flag, not a backup folder, a PATH that is a folder, or
-     restore refused because files changed since the edit (they are listed; use --force to override)
+  1  an I/O error, or a backup copy that does not match its recorded hash (nothing was restored from it); for
+     restore, at least one file could not be replaced (the others were; run it again to finish)
+  2  the command line or the backup cannot be used: bad flag, not a backup folder, a PATH that is a folder or that
+     the backup does not hold, or restore refused (a path redirected since the backup, or files changed since the
+     edit: listed, --force overrides only the second)
 
 Stdlib only. Python 3.9+. No network.
 """
@@ -52,7 +63,6 @@ import os
 import pathlib
 import shlex
 import stat
-import subprocess
 import sys
 import tempfile
 
@@ -147,9 +157,22 @@ def copy_path(folder: pathlib.Path, entry: dict) -> pathlib.Path:
     return folder / name
 
 
-def restore_command(folder: pathlib.Path) -> str:
-    argv = [sys.executable or "python", str(pathlib.Path(__file__).resolve()), "restore", str(folder)]
-    return subprocess.list2cmdline(argv) if os.name == "nt" else " ".join(shlex.quote(a) for a in argv)
+def canonical(path) -> str:
+    return os.path.normcase(os.path.realpath(path))
+
+
+def redirected(entry: dict) -> bool:
+    """True when the recorded path no longer resolves to itself (a parent folder or the file became a link)."""
+    return canonical(entry["path"]) != os.path.normcase(entry["path"])
+
+
+def restore_command(folder: pathlib.Path, windows=None) -> str:
+    """The command that restores `folder` with the copy of this script stored in it, quoted for the platform:
+    PowerShell on Windows (& 'program' 'script' restore 'folder'), a POSIX shell elsewhere."""
+    argv = [sys.executable or "python", str(folder / "backup.py"), "restore", str(folder)]
+    if os.name == "nt" if windows is None else windows:
+        return "& " + " ".join("'" + a.replace("'", "''") + "'" for a in argv)
+    return " ".join(shlex.quote(a) for a in argv)
 
 
 # ---------------------------------------------------------------- save
@@ -229,6 +252,7 @@ def cmd_save(args) -> int:
             write_private(folder / name, data)
             entries.append({"path": str(path), "sha256": sha256(data), "size": size, "mode": f"{mode:04o}", "copy": name,
                             "post_edit_sha256": None})
+        write_private(folder / "backup.py", pathlib.Path(__file__).read_bytes())
         save_manifest(folder, {"version": VERSION, "created": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
                                "id": folder.name, "files": entries})
     except OSError as exc:
@@ -245,13 +269,22 @@ def cmd_save(args) -> int:
 
 def cmd_record(args) -> int:
     folder, manifest = load(args.backup)
-    for entry in manifest["files"]:
+    if args.paths:
+        wanted = {canonical(pathlib.Path(p).expanduser()) for p in args.paths}
+        held = {canonical(e["path"]) for e in manifest["files"]}
+        unknown = sorted(wanted - held)
+        if unknown:
+            raise Refused("the backup does not hold: " + ", ".join(unknown) + "; nothing was recorded")
+        chosen = [e for e in manifest["files"] if canonical(e["path"]) in wanted]
+    else:
+        chosen = manifest["files"]
+    for entry in chosen:
         entry["post_edit_sha256"] = current(pathlib.Path(entry["path"]))
     try:
         save_manifest(folder, manifest)
     except OSError as exc:
         raise Failed(f"could not update {folder / MANIFEST}: {type(exc).__name__}: {exc.strerror or exc}") from exc
-    for entry in manifest["files"]:
+    for entry in chosen:
         print(f"{'changed' if entry['post_edit_sha256'] != entry['sha256'] else 'same as original'}: {entry['path']}")
     return 0
 
@@ -277,9 +310,31 @@ def cmd_status(args) -> int:
     return 0
 
 
+def put_back(entry: dict, data) -> str:
+    """Restore one file; returns the line to print. Raises OSError or Failed on failure."""
+    path = pathlib.Path(entry["path"])
+    if redirected(entry):
+        raise Failed("it no longer resolves to the path recorded in the backup")
+    if data is None:
+        if path.is_dir() and not path.is_symlink():
+            raise Failed("it is a folder now; it was not removed")
+        path.unlink()
+        return f"removed (did not exist originally): {path}"
+    mode = int(entry["mode"], 8) if isinstance(entry.get("mode"), str) else None
+    replace_atomic(path, data, mode)
+    return f"restored: {path}"
+
+
 def cmd_restore(args) -> int:
     folder, manifest = load(args.backup)
     entries = manifest["files"]
+    moved = [e["path"] for e in entries if redirected(e)]
+    if moved:
+        print("restore refused: these paths no longer resolve to the path recorded in the backup (a parent folder or "
+              "the file became a symlink or junction). --force does not override this. Nothing was touched:", file=sys.stderr)
+        for path in moved:
+            print(f"  {path}", file=sys.stderr)
+        return 2
     states = [state(e) for e in entries]
     # "missing" is a path now absent whose original was present and whose deletion was not recorded as the edit
     refused = [e["path"] for e, s in zip(entries, states) if s in ("changed since", "missing")]
@@ -305,22 +360,21 @@ def cmd_restore(args) -> int:
         if sha256(data) != entry["sha256"]:
             raise Failed(f"the backup copy {copy} does not match its recorded hash; nothing was restored")
         plan.append((entry, data))
-    for entry, data in plan:
-        path = pathlib.Path(entry["path"])
-        try:
-            if data is None:
-                if path.is_dir() and not path.is_symlink():
-                    raise Failed(f"{path} is a folder now; it was not removed")
-                path.unlink()
-                print(f"removed (did not exist originally): {path}")
-            else:
-                mode = int(entry["mode"], 8) if isinstance(entry.get("mode"), str) else None
-                replace_atomic(path, data, mode)
-                print(f"restored: {path}")
-        except OSError as exc:
-            raise Failed(f"could not restore {path}: {type(exc).__name__}: {exc.strerror or exc}") from exc
     if not plan:
         print("nothing to restore: every file is already the original")
+        return 0
+    failed = 0
+    for entry, data in plan:  # one file at a time: a failure on one does not stop the others
+        try:
+            print(put_back(entry, data))
+        except (OSError, Failed) as exc:
+            failed += 1
+            reason = f"{type(exc).__name__}: {exc.strerror or exc}" if isinstance(exc, OSError) else str(exc)
+            print(f"failed: {entry['path']} ({reason})")
+    if failed:
+        print(f"backup.py: {failed} of {len(plan)} file(s) could not be restored; the others were. "
+              "Fix the cause and run the same restore again to finish", file=sys.stderr)
+        return 1
     return 0
 
 
@@ -334,8 +388,9 @@ def make_parser() -> argparse.ArgumentParser:
     save = sub.add_parser("save", help="copy files into a new timestamped backup")
     save.add_argument("--out", default=None, metavar="STORE", help="store folder (default: ~/.grade-optimizer-backups)")
     save.add_argument("paths", nargs="+", metavar="PATH", help="files to back up; an absent one is recorded as absent")
-    rec = sub.add_parser("record", help="store the post-edit hash of each path (run after the edits)")
+    rec = sub.add_parser("record", help="store the post-edit hash of the named paths, or of all (run after an edit)")
     rec.add_argument("backup", metavar="BACKUP_DIR")
+    rec.add_argument("paths", nargs="*", metavar="PATH", help="only these paths (default: every path in the backup)")
     res = sub.add_parser("restore", help="put the originals back")
     res.add_argument("backup", metavar="BACKUP_DIR")
     res.add_argument("--force", action="store_true", help="also overwrite files changed since the edit")

@@ -1,6 +1,6 @@
 ---
 name: grade-optimizer
-description: Brings a Claude Code setup to the standard Anthropic's documentation describes. Measures what loads, what it costs and what gets used, then finds what is misplaced, colliding, unused, on the wrong model, or poorly made for its job, and what Claude Code offers that the setup would gain from, with the source for each change. Also reviews one skill, subagent, hook or instruction file in depth, or an orchestration process (runner, workflow, review loop) built on the setup. Use to audit, tune or cut the cost of a setup, to find why Claude ignores an instruction or picks the wrong skill or agent, or to fit a setup to a new model. Not for line-by-line cleanup of dated prompt text, which /doctor prompt-audit does.
+description: Brings a Claude Code setup in line with Anthropic's published guidance, as an independent review. Measures what loads, what it costs and what gets used, then finds what is misplaced, colliding, unused, on the wrong model, or poorly made for its job, and what Claude Code offers that the setup would gain from, with the source for each change. Also reviews one skill, subagent, hook or instruction file in depth, or an orchestration process (runner, workflow, review loop) built on the setup. Use to audit, tune or cut the cost of a setup, to find why Claude ignores an instruction or picks the wrong skill or agent, or to fit a setup to a new model. Not for line-by-line cleanup of dated prompt text, which /doctor prompt-audit does.
 ---
 
 # Grade optimizer

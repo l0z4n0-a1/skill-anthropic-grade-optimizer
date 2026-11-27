@@ -384,8 +384,9 @@ updating in place. Cost: draft claims reaching a live review, or edits lost.
 
 ### The upgrade edits with the person's approval, not through its own writer
 
-Why: approval has to bind to the exact edit. Claude Code already shows each Edit and Write and asks for it in its
-default permission mode, so the upgrade uses those tools and adds a backup taken first and a check after each edit.
+Why: approval has to bind to the exact edit. The command makes the person's pick of exact edits the approval, and
+does not count on a tool prompt, which depends on the permission mode (in auto mode Claude Code may apply an edit
+without asking, settings-023). It adds a backup taken first, a record after each edit and a check after each one.
 Settings files are the exception, because the model must not read them; `settings_edit.py` applies narrow operations
 and prints only the changed region. Rejected: a separate writer that applies a pre-approved, hashed diff, which
 reviewers proposed; in interactive use it adds machinery without a stronger guarantee. Cost: in an unattended run

@@ -99,9 +99,14 @@ Privacy: it copies what a review needs and nothing else: the values of a fixed l
 fields and settings, hook definitions (event, matcher, command, timeout and a fixed list of options),
 permission rules, and the names of servers, plugins, models, tools, skills and agents. It never copies
 `env` values, MCP server arguments, message text, or the contents of any frontmatter block outside the
-list. What it copies, it copies as written: a secret typed into a description, a hook command or a
-permission rule appears in the output, so treat the JSON like the files it was read from, and know
-that opening it in a Claude session shows that session every field it kept. With --out the file is
+list. A hook command is not copied as written: it is masked to the program name and the base name of
+the first path-like argument followed by "…" (`python guard.py …`). A permission rule keeps its tool
+name and a short plain specifier (`Bash(git push:*)`, `Read(./.env)`); one with `=`, `@`, a quote, a URL,
+a header or a long token keeps the tool name and two words (`Bash(curl -H …)`). So an argument, header
+or URL that carries a credential never reaches the output.
+Whether a hook's scripts exist is still checked on the full command. Everything else it copies as
+written: a secret typed into a description appears in the output, so treat the JSON like the files it
+was read from, and know that opening it in a Claude session shows that session every field it kept. With --out the file is
 created with mode 0600 where the system has modes (an existing file is restricted to 0600 before it is
 emptied and rewritten, so the new content is never in a file others can read). On Windows that mode has no effect: the file
 gets the access rules of its folder (the ACL it inherits), so write it somewhere only you can read.
@@ -213,6 +218,67 @@ def scalar(value):
     return value if isinstance(value, (str, int, float, bool)) and len(str(value)) <= MAX_SCALAR else f"({type(value).__name__})"
 
 
+_ASSIGNMENT = re.compile(r"[A-Za-z_][A-Za-z0-9_]*=")
+_SAFE_NAME = re.compile(r"[\w.+*:-]{1,60}")
+_SCRIPT_END = re.compile(r"\.(?:py|sh|js|mjs|cjs|ts|ps1|cmd|bat|rb|pl)$", re.I)
+
+
+def _path_like(word: str) -> bool:
+    if not word or word.startswith("-") or re.search(r"[\s=@]|://", word):
+        return False
+    return bool(re.search(r"[\\/]", word) or word.startswith(("~", ".")) or _SCRIPT_END.search(word))
+
+
+def mask_command(command) -> str:
+    """A command as it may be shown: the program name and the base name of its first path-like argument, then `…`.
+
+    Nothing else of the command is kept, quoted or not, because arguments, headers, URLs and leading NAME=value
+    assignments are where credentials sit. One rule, no pattern matching for secrets: what is not named above is dropped."""
+    text = command if isinstance(command, str) else ""
+    try:
+        words = shlex.split(text.replace("\\", "/"))
+    except ValueError:
+        words = text.replace("\\", "/").split()
+    while words and _ASSIGNMENT.match(words[0]):
+        words.pop(0)
+    if not words:
+        return "…"
+    shown = []
+    program = words[0].rsplit("/", 1)[-1]
+    shown.append(program if _SAFE_NAME.fullmatch(program) else "…")
+    script = next((w.rsplit("/", 1)[-1] for w in words[1:] if _path_like(w) and _SAFE_NAME.fullmatch(w.rsplit("/", 1)[-1])), None)
+    if script:
+        shown.append(script)
+    return " ".join(shown) + " …"
+
+
+MAX_SPECIFIER = 60
+_SECRET_SHAPE = re.compile(r"""[=@'"]|://|[A-Za-z][\w-]*:\s+\S|[A-Za-z0-9+/_-]{20,}""")  # what keeps a specifier from showing whole
+_HEADER_WORD = re.compile(r"[A-Za-z][\w-]*:$")
+
+
+def mask_rule(rule) -> str:
+    """A permission rule as it may be shown, enough for a review to judge what it covers.
+
+    A bare tool name is kept. For `Tool(specifier)` the specifier is kept verbatim when it is at most 60 characters and has
+    no `=`, `@`, quote or `://`, no header-looking `Name: value` and no token of 20 or more of [A-Za-z0-9+/_-]. Otherwise
+    the tool name and the first two words of the specifier stay (a word that has any of those, or ends a header name, stops
+    the list), then `…`."""
+    text = rule if isinstance(rule, str) else ""
+    m = re.fullmatch(r"\s*([A-Za-z_][\w.:*-]*)\((.*)\)\s*", text, re.S)
+    if not m:
+        return text.strip() if re.fullmatch(r"\s*[A-Za-z_][\w.:*-]*\s*", text) else mask_command(text)
+    tool, spec = m.group(1), m.group(2).strip()
+    if len(spec) <= MAX_SPECIFIER and not _SECRET_SHAPE.search(spec):
+        return f"{tool}({spec})"
+    kept = []
+    for word in spec.split()[:2]:
+        if _SECRET_SHAPE.search(word) or _HEADER_WORD.fullmatch(word):
+            break
+        kept.append(word)
+    return f"{tool}({' '.join(kept + ['…'])})"
+
+
 def same_path(a, b) -> bool:
     try:
         return os.path.normcase(str(pathlib.Path(a).resolve())) == os.path.normcase(str(pathlib.Path(b).resolve()))
@@ -233,6 +299,7 @@ class Scan:
         self.confine, self.user_home = confine, user_home
         self.extra = {os.path.normcase(str(pathlib.Path(p).resolve())) for p in extra_files}
         self.unreadable: list = []
+        self.parsed: set = set()  # JSON files read_json parsed into an object, as str(path)
         self.skipped_outside: list = []
         self.ancestors_skipped = False
         self.unresolved_imports = 0
@@ -291,6 +358,7 @@ class Scan:
         if not isinstance(data, dict):
             self.unreadable.append(f"{path}: expected a JSON object, found {type(data).__name__}")
             return {}
+        self.parsed.add(str(path))
         return data
 
 
@@ -760,7 +828,7 @@ def settings_view(home: pathlib.Path, project: pathlib.Path, settings: list, sca
             "env_names": sorted(as_dict(data.get("env"))),
             "permissions": {k: (len(v) if isinstance(v, list) else scalar(v) if k == "defaultMode" else f"({type(v).__name__})")
                             for k, v in perms.items()},
-            "permission_rules": {k: [r[:MAX_RULE] for r in v if isinstance(r, str)][:MAX_RULES]
+            "permission_rules": {k: [mask_rule(r)[:MAX_RULE] for r in v if isinstance(r, str)][:MAX_RULES]
                                  for k, v in perms.items() if k in ("allow", "ask", "deny") and isinstance(v, list)},
             "enabledPlugins": sorted(k for k, v in plugins.items() if v),
             "disabledPlugins": sorted(k for k, v in plugins.items() if not v),
@@ -776,7 +844,7 @@ def settings_view(home: pathlib.Path, project: pathlib.Path, settings: list, sca
                     paths = hook_script_paths(cmd, home, project, scan.user_home, scan)
                     view["hooks"].append({
                         "scope": label, "event": str(event), "matcher": scalar(group.get("matcher", "")),
-                        "type": scalar(hook.get("type", "command")), "command": cmd, "timeout": scalar(hook.get("timeout")),
+                        "type": scalar(hook.get("type", "command")), "command": mask_command(cmd) if cmd else "", "timeout": scalar(hook.get("timeout")),
                         "options": {k: scalar(hook[k]) for k in SAFE_HOOK_OPTIONS if k in hook},
                         "other_options": sorted(k for k in hook if k not in known),
                         "scripts_missing": paths["missing"],
@@ -809,7 +877,9 @@ def features_in_use(pieces: dict, settings: dict, plugins: list, config_found: b
         if str(hook["options"].get("onFailure", "")).lower() == "block":
             blocking[hook["event"]] = blocking.get(hook["event"], 0) + 1
     hook_gap = "hooks defined by plugins, in skill or subagent frontmatter, or in managed settings"
-    rules = {name: sum(len(f["permission_rules"].get(name, [])) for f in files) for name in ("allow", "ask", "deny")}
+    # the count of each list as the file has it, not of permission_rules, which is cut to MAX_RULES for display
+    rules = {name: sum(f["permissions"].get(name, 0) for f in files if isinstance(f["permissions"].get(name, 0), int))
+             for name in ("allow", "ask", "deny")}
 
     def frontmatter(record: dict) -> dict:
         return as_dict(record.get("frontmatter"))
@@ -827,7 +897,7 @@ def features_in_use(pieces: dict, settings: dict, plugins: list, config_found: b
     keys = {k for f in files for k in f["keys"]}
     mcp_gap = "servers defined by plugins or managed settings"
     if not config_found:
-        mcp_gap += "; the user-level .claude.json was not read (not found, or outside the read scope)"
+        mcp_gap += "; the user-level .claude.json was not read (not found, outside the read scope, or not valid JSON)"
     return {
         "hooks_by_event": {"value": dict(sorted(by_event.items())), "not_measured": hook_gap},
         "stop_hooks_exist": {"value": {e: e in by_event for e in ("Stop", "SubagentStop")}, "not_measured": hook_gap},
@@ -1277,7 +1347,7 @@ def build(home: pathlib.Path, project: pathlib.Path, days: int, *, confine: bool
         "skill_listing_cap": cap, "instruction_mode": mode,
         "fixed_context_est_tokens": {**fixed, "total": sum(fixed.values())},
         "instruction_files": instr, **pieces, "plugins": plugins, "settings": settings,
-        "features": features_in_use(pieces, settings, plugins, config_path.is_file() if scan.allowed(config_path) else False),
+        "features": features_in_use(pieces, settings, plugins, str(config_path) in scan.parsed),
         "description_overlaps": overlaps(pieces),
         "usage": hist, "never_invoked_in_window": never,
         "spawned_without_definition_here": spawned_elsewhere,
@@ -1448,6 +1518,14 @@ def _compare_lines(before: dict, after: dict) -> str:
             by_event = as_dict(value("hooks_by_event"))
             for event in events:
                 rows[f"hooks on {event}"] = by_event.get(event, 0)
+            blocking = as_dict(value("hooks_with_on_failure_block_by_event"))
+            rows["hooks with onFailure block"] = sum(n for n in blocking.values() if isinstance(n, int))
+            for event in sorted(set(as_dict(as_dict(before["features"].get("hooks_with_on_failure_block_by_event")).get("value")))
+                                | set(as_dict(as_dict(after["features"].get("hooks_with_on_failure_block_by_event")).get("value")))):
+                rows[f"hooks with onFailure block on {event}"] = blocking.get(event, 0)
+            for event, label in (("Stop", "Stop hooks present"), ("SubagentStop", "SubagentStop hooks present"),
+                                 ("PreToolUse", "PreToolUse hooks present")):
+                rows[label] = int(event in by_event)
         if use and same_window:
             rows.update({
                 "main sessions in window": use["sessions"]["main"], "requests in window": total.get("requests", 0),

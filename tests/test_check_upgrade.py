@@ -8,12 +8,15 @@ Run: python -m unittest discover -s tests -t .
 import contextlib
 import io
 import json
+import os
 import pathlib
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "evals"))
@@ -40,11 +43,15 @@ JSON_GUARD = '''import json
 import sys
 
 command = json.load(sys.stdin).get("tool_input", {}).get("command", "")
-if "git" in command and "push" in command and command.split()[-1].split(":")[-1] == "main":
+if "git" in command and "push" in command and command.split()[-1].lstrip("+").split(":")[-1].split("/")[-1] == "main":
     print(json.dumps({"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "deny",
                                              "permissionDecisionReason": "no pushes to main"}}))
 sys.exit(0)
 '''
+
+# deny rules that together block every push-to-main form the oracle tries and let the branches through
+PUSH_RULES = ["Bash(git push * main)", "Bash(git push * +main)", "Bash(git push * HEAD:main)", "Bash(git push * HEAD:refs/heads/main)",
+              "Bash(git -C * push * main)"]
 
 CLAUDE_MD = """# Billing service
 
@@ -202,8 +209,184 @@ Run `git ls-files | xargs wc -l` and group the counts by file extension. Present
         self.settings(lambda d: d["hooks"]["PreToolUse"][0].update(matcher="Edit|Write"))
         self.assertNotFixed("D1")
 
+    def test_a_disabled_hook_does_not_count(self):
+        write(self.home / "hooks" / "guard_main.py", GOOD_GUARD)
+        self.assertTrue(self.d1()[0])
+        self.settings(lambda d: d.update(disableAllHooks=True))
+        ok, why = self.d1()
+        self.assertFalse(ok)
+        self.assertIn("no enabled PreToolUse hook", why)
+        self.assertNotFixed("D1")  # the same through the full check
+        self.settings(lambda d: d.update(disableAllHooks=False))
+        self.assertTrue(self.d1()[0])
+        local = self.project / ".claude" / "settings.local.json"
+        write(local, json.dumps({"disableAllHooks": True}))  # a later file wins
+        self.assertFalse(self.d1()[0])
+        local.unlink()
+        group = lambda d: d["hooks"]["PreToolUse"][0]  # noqa: E731
+        hook = lambda d: d["hooks"]["PreToolUse"][0]["hooks"][0]  # noqa: E731
+        for pick in (group, hook):
+            for flag in ({"disabled": True}, {"enabled": False}):
+                self.settings(lambda d: pick(d).update(flag))
+                self.assertFalse(self.d1()[0], (pick, flag))
+                self.settings(lambda d: [pick(d).pop(k) for k in flag])
+                self.assertTrue(self.d1()[0])
+
+    def test_deny_rules_that_cover_the_push_forms_pass_with_the_hook_disabled_and_a_bare_push_is_left_to_the_hook(self):
+        self.assertNotIn("git push", check_upgrade.MUST_BLOCK)  # not testable: it is only wrong on main
+        self.assertFalse(any(check_upgrade.deny_matches(r, "git push") for r in PUSH_RULES))
+        self.settings(lambda d: d.update(permissions={"deny": PUSH_RULES}, disableAllHooks=True))
+        results = self.results()
+        self.assertFixed("D1", results)
+        self.assertFixed("D2", results)  # the exit-1 guard does not run
+        self.settings(lambda d: d.update(permissions={"deny": PUSH_RULES[:-1]}))
+        self.assertNotFixed("D1")  # one of the forms is open
+
+    def test_a_hook_is_run_as_configured_with_its_arguments_and_not_as_the_bare_script(self):
+        write(self.home / "hooks" / "guard_main.py", GOOD_GUARD.replace("command = ", 'if "--enforce" not in sys.argv:\n    sys.exit(0)\ncommand = ', 1))
+        self.assertNotFixed("D1")  # the script is right but the configured command does not ask it to enforce
+        self.sub(self.home / "settings.json", "guard_main.py", "guard_main.py --enforce")
+        self.assertFixed("D1")
+        self.sub(self.home / "settings.json", "~/.claude/hooks/guard_main.py", "$HOME/.claude/hooks/guard_main.py")
+        self.assertFixed("D1")  # $HOME is the fixture's home
+
+    def configure(self, command, **hook):
+        write(self.home / "hooks" / "guard_main.py", GOOD_GUARD)
+        self.settings(lambda d: d["hooks"]["PreToolUse"][0]["hooks"][0].update(command=command, **hook))
+
+    def d1(self):
+        """D1 on the fixture in place, without the copy and the fresh build the full check makes (the guard is the same)."""
+        return check_upgrade.Checks(check_upgrade.Setup(self.fx, self.fx), self.fx).d1()
+
+    def not_exercised(self, command, *words):
+        self.configure(command)
+        ok, why = self.d1()
+        self.assertFalse(ok, f"{command}: {why}")
+        self.assertIn("not exercised: ", why, command)
+        for word in words:
+            self.assertIn(word, why, command)
+
+    def test_no_shell_is_used_so_syntax_variables_and_other_programs_are_not_exercised_and_not_fixed(self):
+        marker = self.out / "ran.txt"
+        script = "~/.claude/hooks/guard_main.py"
+        self.not_exercised(f"cd /no/such/folder && python {script}", "starts with `cd`")
+        self.not_exercised(f"python {script} && python -c \"open('{marker.as_posix()}', 'w')\"", "shell syntax")
+        self.not_exercised(f"python {script}; touch {marker.as_posix()}", "shell syntax")
+        self.not_exercised(f"python {script} > {marker.as_posix()}", "shell syntax")
+        self.not_exercised(f"python {script} | cat", "shell syntax")
+        self.not_exercised("python $OTHER/.claude/hooks/guard_main.py", "variable other than HOME")
+        self.not_exercised('python "${XDG_DIR}/guard_main.py"', "variable other than HOME")
+        self.not_exercised("python $HOMEDIR/.claude/hooks/guard_main.py", "variable other than HOME")  # not $HOME
+        self.not_exercised(f"bash {script}", "starts with `bash`")
+        self.not_exercised("~/.claude/hooks/guard_main.sh", "starts with")
+        self.not_exercised(f"python3.11 {script}", "starts with `python3.11`")
+        self.not_exercised(f"node {script}", "starts with `node`")
+        self.not_exercised(f"py -2 {script}", "option `-2`")
+        self.not_exercised("python -c \"import sys\"", "option `-c`")
+        self.not_exercised("python", "no script")
+        self.not_exercised("python 'unclosed", "cannot be parsed")
+        self.not_exercised("python ~/.claude/hooks/missing.py", "not a file")
+        self.assertFalse(marker.exists(), "something outside the one script ran")
+
+    def test_home_and_project_dir_variables_resolve_to_the_fixture_and_py_3_loses_its_flag(self):
+        guard = "/.claude/hooks/guard_main.py"
+        for command in (f"python $HOME{guard}", f"python ${{HOME}}{guard}", f'python "$HOME{guard}"', f"python3 ${{HOME}}{guard} --x",
+                        f"python $CLAUDE_PROJECT_DIR/../home{guard}", f'python "${{CLAUDE_PROJECT_DIR}}/../home{guard}"',
+                        f"py -3 ~{guard}", f"py -3 $HOME{guard}", f"PY.EXE -3 ${{HOME}}{guard}"):
+            self.configure(command)
+            ok, why = self.d1()
+            self.assertTrue(ok, f"{command}: {why}")
+        setup = check_upgrade.Setup(self.fx, self.fx)
+        plan = check_upgrade.plan_command(setup, f"py -3 $HOME{guard} --home $HOME --proj ${{CLAUDE_PROJECT_DIR}} --other $ELSE")
+        self.assertEqual(plan["note"], "")
+        self.assertEqual(plan["argv"][0], sys.executable)
+        self.assertEqual(pathlib.Path(plan["argv"][1]), self.home / "hooks" / "guard_main.py")
+        self.assertEqual([pathlib.Path(a) for a in plan["argv"][3:4] + plan["argv"][5:6]], [self.fx / "home", self.project])
+        self.assertEqual(plan["argv"][-1], "$ELSE")  # an argument's other variables are left as written
+        self.assertIn("-3", check_upgrade.plan_command(setup, f"py -3 -3 {guard}")["note"])  # only the first -3 is dropped
+        for command in (f"py -3 $HOME{guard} && echo", "py -3 ~/x.sh", f"cd $HOME && python $HOME{guard}"):
+            self.assertIn("not exercised", check_upgrade.plan_command(setup, command)["note"], command)
+
+    def test_python_python3_and_py_are_run_with_this_interpreter_and_quotes_and_the_home_are_resolved(self):
+        for name in ("python", "python3", "py", "PYTHON.EXE", "/usr/bin/python3"):
+            self.configure(f"{name} ~/.claude/hooks/guard_main.py")
+            self.assertFixed("D1")
+        self.configure('python "~/.claude/hooks/guard_main.py" --x')  # a quoted word is one word; ~ is the home even inside quotes here
+        plan = check_upgrade.plan_command(check_upgrade.Setup(self.fx, self.fx), 'python "~/.claude/hooks/guard_main.py" --x "a b"')
+        self.assertEqual(plan["argv"][0], sys.executable)
+        self.assertEqual(pathlib.Path(plan["argv"][1]), self.home / "hooks" / "guard_main.py")
+        self.assertEqual(plan["argv"][2:], ["--x", "a b"])
+        plan = check_upgrade.plan_command(check_upgrade.Setup(self.fx, self.fx), "python guard.py $HOME ~x")
+        self.assertIn("not exercised", plan["note"])  # a relative script is looked up in the project, and it is not there
+
+    def test_a_guard_outside_the_fixture_is_reported_and_not_executed(self):
+        marker = self.out / "ran.txt"
+        outside = self.out / "elsewhere" / "guard.py"
+        write(outside, GOOD_GUARD.replace("command = ", f"open({str(marker)!r}, 'w').close()\ncommand = ", 1))
+        self.sub(self.home / "settings.json", "python ~/.claude/hooks/guard_main.py", f"python {outside.as_posix()}")
+        ok, why = self.results()["D1"]
+        self.assertFalse(ok)
+        self.assertIn("outside the fixture", why)
+        self.assertFalse(marker.exists(), "the oracle ran a script that is not in the fixture")
+
+    def test_a_script_that_is_a_link_to_a_file_outside_the_fixture_is_not_executed_either(self):
+        marker = self.out / "ran.txt"
+        outside = self.out / "elsewhere" / "guard.py"
+        write(outside, GOOD_GUARD.replace("command = ", f"open({str(marker)!r}, 'w').close()\ncommand = ", 1))
+        (self.home / "hooks" / "guard_main.py").unlink()
+        try:
+            (self.home / "hooks" / "guard_main.py").symlink_to(outside)
+        except (OSError, NotImplementedError):
+            self.skipTest("this system will not create symlinks for the test")
+        ok, why = self.results()["D1"]
+        self.assertFalse(ok)
+        self.assertIn("outside the fixture", why)
+        self.assertFalse(marker.exists())
+
+    def test_inside_resolves_links_before_judging_where_a_path_is(self):
+        root = self.fx
+        self.assertTrue(check_upgrade.inside(root / "home" / "x.py", root))
+        self.assertTrue(check_upgrade.inside(root, root))
+        self.assertFalse(check_upgrade.inside(self.out / "elsewhere" / "x.py", root))
+        self.assertFalse(check_upgrade.inside(root.parent / (root.name + "-sibling") / "x.py", root))  # a shared name prefix is not inside
+        self.assertFalse(check_upgrade.inside(root / "home" / ".." / ".." / "x.py", root))
+        real = os.path.realpath
+        link = root / "home" / "link.py"
+        with mock.patch.object(check_upgrade.os.path, "realpath", lambda p: str(self.out / "elsewhere" / "x.py") if p == link else real(p)):
+            self.assertFalse(check_upgrade.inside(link, root))  # a link in the fixture that leads out
+
+    def test_a_guard_runs_with_a_minimal_environment_and_the_fixture_home(self):
+        guard = GOOD_GUARD.replace("command = ", 'import os\nhome = os.environ.get("HOME", "").replace("\\\\", "/")\n'
+                                   'if "ORACLE_TEST_SECRET" in os.environ or not home.endswith("/home"):\n    sys.exit(0)  # fail open: it saw too much\ncommand = ', 1)
+        write(self.home / "hooks" / "guard_main.py", guard)
+        with mock.patch.dict(os.environ, {"ORACLE_TEST_SECRET": "hunter2", "ANTHROPIC_API_KEY": "sk-test"}):
+            self.assertFixed("D1")
+            env = check_upgrade.minimal_env(check_upgrade.Setup(self.fx, self.fx))
+        self.assertNotIn("ORACLE_TEST_SECRET", env)
+        self.assertNotIn("ANTHROPIC_API_KEY", env)
+        self.assertEqual(pathlib.Path(env["HOME"]), self.fx / "home")
+        self.assertEqual(pathlib.Path(env["CLAUDE_PROJECT_DIR"]), self.project)
+
+    def test_deny_rules_are_read_the_way_claude_code_reads_bash_rules(self):
+        cases = [("Bash", "git push origin main", True), ("Bash(git push origin main)", "git push origin main", True),
+                 ("Bash(git push origin main)", "git push origin +main", False), ("Bash(git push:*)", "git push origin x", True),
+                 ("Bash(git push:*)", "git pushy", False), ("Bash(git push * main)", "git push --signed origin main", True),
+                 ("Bash(git push * main)", "git push origin feature-main", False), ("Read(./.env)", "git push origin main", False)]
+        for rule, command, expected in cases:
+            self.assertEqual(check_upgrade.deny_matches(rule, command), expected, (rule, command))
+
+    def test_a_deny_rule_for_one_branch_or_one_form_or_every_push_is_not_a_fix(self):
+        for rules in (["Bash(git push origin feature-main)"], ["Bash(git push origin main)"], ["Bash(git push:*)"], ["Bash(git *)"]):
+            shutil.rmtree(self.fx)
+            build_fixtures.planted(self.fx)
+            self.settings(lambda d: (d.update(permissions={"deny": rules}), d["hooks"].pop("PreToolUse")))
+            results = self.results()
+            self.assertNotFixed("D1", results)
+            self.assertNotFixed("D2", results)
+            self.assertIn("deny rules", results["D1"][1], rules)
+
     def test_a_deny_rule_with_the_hook_removed_fixes_both_and_with_the_broken_hook_kept_fixes_only_d1(self):
-        self.settings(lambda d: d.update(permissions={"deny": ["Bash(git push origin main)"]}))
+        self.settings(lambda d: d.update(permissions={"deny": PUSH_RULES}))
         results = self.results()
         self.assertFixed("D1", results)
         self.assertNotFixed("D2", results)  # the exit-1 guard is still wired
@@ -263,11 +446,41 @@ Run `git ls-files | xargs wc -l` and group the counts by file extension. Present
         write(claude, "# Billing service\n\nMoney is stored as integer cents everywhere, because two rounding bugs; Decimal at the API.\n"
                       "Tests run with `make test`; `docker compose up db`.\n\n@docs/close.md\n")
         self.assertNotFixed("D6")
-        write(claude, "# Billing service\n\nMoney is stored as integer cents everywhere, because two rounding bugs; Decimal at the API.\n"
-                      "Tests run with `make test`; `docker compose up db`.\n")
+        short = ("# Billing service\n\nMoney is stored as integer cents everywhere, because two rounding bugs; Decimal at the API.\n"
+                 "Tests run with `make test`; `docker compose up db`.\n")
+        write(claude, short)  # the steps are out of CLAUDE.md, but nothing leads to docs/close.md
+        self.assertNotFixed("D6")
+        write(claude, short + "\nMonth-end close: see docs/close.md when asked.\n")  # named, not imported
         ok, why = self.results()["D6"]
         self.assertTrue(ok, why)
         self.assertIn("docs/close.md", why)
+
+    def test_d6_does_not_pass_when_the_procedure_is_deleted_or_left_where_nothing_calls_it(self):
+        claude = self.project / "CLAUDE.md"
+        procedure = claude.read_text(encoding="utf-8")
+        short = "# Billing service\n\nMoney is stored as integer cents; Decimal at the API; rounding.\n`make test`, `docker compose up db`.\n"
+        write(claude, short)
+        ok, why = self.results()["D6"]
+        self.assertFalse(ok, why)
+        self.assertIn("no skill or file", why)
+        write(self.home / "agents" / "notes.md", procedure)  # an agent file is not a place the steps can be called from
+        self.assertNotFixed("D6")
+        write(self.home / "skills" / "month-end-close" / "SKILL.md",
+              "---\nname: month-end-close\ndescription: Runs the month-end close. Use on the first business day of a month.\n---\n" + procedure)
+        ok, why = self.results()["D6"]
+        self.assertTrue(ok, why)
+        self.assertIn("skill", why)
+
+    def test_d6_counts_a_skill_only_when_its_frontmatter_has_a_name_and_a_description(self):
+        claude = self.project / "CLAUDE.md"
+        procedure = claude.read_text(encoding="utf-8").split("## Month-end close procedure")[1].split("CRITICAL")[0]
+        write(claude, CLAUDE_MD.replace("Month-end close has a skill: ask for it by name.\n", ""))
+        skill = self.home / "skills" / "scratch" / "SKILL.md"
+        for head in ("", "---\nname: scratch\n---\n", "---\ndescription: only this\n---\n", "---\nname:\ndescription: x\n---\n"):
+            write(skill, head + procedure)
+            self.assertNotFixed("D6")
+        write(skill, "---\nname: scratch\ndescription: Runs the month-end close.\n---\n" + procedure)
+        self.assertFixed("D6")
 
     def test_d7_rejects_a_reworded_false_claim_and_accepts_the_truth_or_a_removal(self):
         skill = self.home / "skills" / "audit-readonly" / "SKILL.md"
@@ -355,6 +568,58 @@ Run `git ls-files | xargs wc -l` and group the counts by file extension. Present
         write(transcript, re.sub(r"\d{4}-\d\d-\d\dT[\d:.]+Z", "2001-01-01T00:00:00.000Z", text))
         self.assertFixed("S5")
         transcript.unlink()
+        ok, why = self.results()["S5"]
+        self.assertFalse(ok)
+        self.assertIn("s1.jsonl", why)
+
+    def test_s5_allows_new_skills_and_hooks_and_removing_a_defect_file_but_not_other_new_files(self):
+        self.fix_all()
+        self.assertFixed("S5")  # fix_all adds a skill and rewrites defect files
+        write(self.home / "hooks" / "lib" / "helper_lib.py", "X = 1\n")
+        self.assertFixed("S5")
+        (self.home / "agents" / "helper.md").unlink()  # a defect file may go
+        self.assertFixed("S5")
+        for stray in (self.project / "docs" / "close.md", self.project / "src" / "x.py", self.home / "agents" / "new.md",
+                      self.home / "notes.txt"):
+            write(stray, "x\n")
+            ok, why = self.results()["S5"]
+            self.assertFalse(ok, stray)
+            self.assertIn("new files that are not skills, hooks or named in CLAUDE.md", why)
+            self.assertIn(stray.name, why)
+            stray.unlink()
+        self.assertFixed("S5")
+
+    def test_s5_allows_a_new_project_file_that_claude_md_points_to(self):
+        self.fix_all()
+        claude = self.project / "CLAUDE.md"
+        steps = "\n".join(check_upgrade.MONTH_END) + "\n"
+        write(self.project / "docs" / "close.md", steps)
+        self.assertNotFixed("S5")  # not named yet
+        write(claude, claude.read_text(encoding="utf-8") + "\nMonth-end close: see docs/close.md when asked.\n")
+        ok, why = self.results()["S5"]
+        if not ok:  # CLAUDE.md is a defect file, so editing it is allowed; only the new file is judged
+            self.fail(why)
+
+    def test_s5_a_named_project_file_without_the_month_end_steps_is_a_stray(self):
+        self.fix_all()
+        claude = self.project / "CLAUDE.md"
+        write(claude, claude.read_text(encoding="utf-8") + "\nSee docs/close.md, docs/other.md and src/x.py.\n")
+        write(self.project / "docs" / "close.md", "make export-ledger and make lock-month only\n")  # 2 of the 6 markers
+        write(self.project / "docs" / "other.md", "unrelated\n")
+        write(self.project / "src" / "x.py", "X = 1\n")
+        ok, why = self.results()["S5"]
+        self.assertFalse(ok)
+        for stray in ("close.md", "other.md", "x.py"):
+            self.assertIn(stray, why)
+        write(self.project / "docs" / "close.md", "\n".join(check_upgrade.MONTH_END))  # now it is D6's target
+        for stray in ("docs/other.md", "src/x.py"):
+            (self.project / stray).unlink()
+        self.assertFixed("S5")
+
+    def test_s5_fails_an_edited_file_that_no_defect_lives_in_and_a_defect_file_is_not_exempt_for_its_neighbours(self):
+        self.fix_all()
+        transcript = self.home / "projects" / "billing" / "s1.jsonl"
+        write(transcript, transcript.read_text(encoding="utf-8") + '{"edited": true}\n')
         ok, why = self.results()["S5"]
         self.assertFalse(ok)
         self.assertIn("s1.jsonl", why)

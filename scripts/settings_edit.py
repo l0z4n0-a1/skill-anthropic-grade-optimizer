@@ -2,48 +2,71 @@
 """Edit a Claude Code settings file without anyone reading it: hooks, permission rules and a few plain settings.
 
 A settings file can hold secrets, so a model that edits one by opening it sees them. This script makes the same
-edits and prints only the region it changed, never the rest of the file.
+edits and prints only the region it changed, with hook commands masked, never the rest of the file.
 
 Usage: settings_edit.py <settings file> <operation> [options]
-Operations (the only ones; --dry-run and --create apply to each):
-  add-hook --event E [--matcher M] --command C [--timeout N] [--on-failure block]
+Operations (the only ones; the common options below apply to each):
+  add-hook --event E [--matcher M] --command C [--timeout N] [--on-failure block] [--allow-unknown-event]
         adds {type: command, command, timeout, onFailure} under hooks.E, in the group whose matcher is M (a new
-        group when there is none). A hook with the same command already in that group is left as it is.
-  remove-hook --event E --command-contains TEXT
-        removes the one hook command under E that contains TEXT. Zero matches or more than one is a refusal
-        (exit 2); the matching commands are listed so TEXT can be made more specific.
-  set-hook-option --event E --command-contains TEXT [--on-failure block|default] [--timeout N]
-        the same single-match rule; `default` removes onFailure. At least one of the two options is needed.
+        group when there is none). A hook with the same command already in that group is left as it is. An event
+        that is not in the documented list (built in, widened by kb/snapshots/cc-hooks.md when present) is refused,
+        because Claude Code ignores a hook under an unknown event without an error; --allow-unknown-event accepts it.
+  remove-hook --event E (--command-contains TEXT | --index N)
+        removes one command hook under E. TEXT must match exactly one command, or --index picks one; zero or
+        several matches is a refusal (exit 2) that lists the candidates as index, event, matcher and masked command.
+        --index N is the position among the event's command hooks, in file order; it removes exactly that one even
+        when another hook is identical to it.
+  set-hook-option --event E (--command-contains TEXT | --index N) [--on-failure block|default] [--timeout N]
+        the same selection; `default` removes onFailure. At least one of the two options is needed.
   add-permission --kind allow|ask|deny --rule RULE        no change when the rule is already there
   remove-permission --kind allow|ask|deny --rule RULE     no change when the rule is not there
   set --key K --value V
         only for the keys measure.py already exposes (SAFE_SETTINGS: plain configuration, never a secret).
         V is true or false, a whole number, or else text.
-Common options: --dry-run prints what would change and writes nothing; --create makes the file as {} when it
-does not exist (a missing file without --create is exit 2).
+Common options:
+  --dry-run             print what would change and write nothing
+  --create              make the file as {} when it does not exist (a missing file without it is exit 2)
+  --expect-sha256 H     refuse (exit 2) unless the file's sha256 is H now ("absent" for a file that does not exist
+                        yet): bind a write to the file a dry run showed. The hash is checked again just before
+                        the file is replaced.
+  --follow-links        accept a path that reaches the file through a symlink or junction (see below)
 
-Output, for a real run and for --dry-run alike: the changed region only, as `change:`, `before:` and `after:`
-(a hook entry with its matcher, a permission list, or a key with its old and new value), then what was done.
-Nothing else from the file is printed, and an error message never repeats the file's content. The one exception
-is the list of candidate commands when remove-hook or set-hook-option matches several hooks: a command is printed
-there so TEXT can be made specific, and a command that embeds a secret would show it.
+Output, for a real run and for --dry-run alike: `target:` (the canonical path it will write), `sha256:` of the
+file as it is now, then `change:` with `before:` and `after:` showing the changed region only (one hook entry with
+its matcher; for set-hook-option only the fields that change; a permission list; or a key with old and new value),
+and `new sha256:` and what was done. Nothing else from the file is printed. A hook command or permission rule is
+never printed as written, in any operation or refusal (candidate lists included): only the program name and the base
+name of its first path-like argument, then "…" (`python guard.py …`, `Bash(git …)`), through measure.mask_command
+and mask_rule, the same rule measure.py applies to its report. What is not named there is dropped, quoted or not: no
+argument, header, URL or leading NAME=value assignment is ever shown. Other fields of a hook are listed by name only,
+and a printed type, timeout or onFailure that is not a plain word or number shows as (other). An error message never
+repeats the file's content.
 
 What is kept. The file is read as JSON and written back with its other keys, their order and their values
 unchanged; whitespace is re-emitted in the file's own style (its indent, line endings, a byte-order mark and a
-final newline are detected and kept), so a diff shows the edited region. Comments and a repeated key do not exist
-in JSON and are not preserved. The write is atomic: a temporary file in the same folder, then os.replace, with the
-file's existing mode kept (a new file is created 0600 where the system has modes; on Windows it takes its folder's ACL).
-A symlink is followed and its target replaced.
+final newline are detected and kept). A file that cannot be written back faithfully is refused, not rewritten: one
+with a repeated key in any object (JSON keeps only the last), a number that overflows (1e400 would become the invalid
+Infinity) or underflows to zero, or NaN or Infinity. Comments do not exist in JSON. The write is atomic: a temporary
+file in the same folder, then os.replace, with the file's existing mode kept (a new file is created 0600 where the
+system has modes). On Windows the replacement takes the folder's inherited access rules, not a per-file ACL the old
+file had.
 
-The event name is checked only for shape (letters, starting upper-case), not against the list Claude Code
-documents, so check its spelling: an event it does not know is ignored without error.
+Links. The path given and every folder above it are checked: if reaching the file goes through a symlink or
+junction that leads somewhere other than the path as given, the run is refused (exit 2) unless --follow-links;
+`target:` always shows where the write would land.
+
+An event name must have the shape of one (letters, starting upper-case) for every operation; add-hook also checks
+it against the documented list, as above. remove-hook and set-hook-option do not, so a hook under a misspelled
+event can still be found.
 
 Exit codes:
   0  done, or nothing needed changing, or --dry-run
   1  the file could not be written (I/O error); it is left as it was
-  2  refused or unusable: bad flag; the file is missing (no --create), is not valid JSON, is not a JSON object or
-     has `hooks` or `permissions` in a shape this script does not edit; remove-hook or set-hook-option matched
-     zero or several hooks; a key outside the allowlist. A message on stderr says why.
+  2  refused or unusable: bad flag; the file is missing (no --create), is not valid JSON, cannot round-trip, is not
+     a JSON object, or has `hooks` or `permissions` in a shape this script does not edit; the file differs from
+     --expect-sha256 or changed while the edit was prepared; the path goes through a link (no --follow-links);
+     remove-hook or set-hook-option matched zero or several hooks; a key outside the allowlist. A message on
+     stderr says why.
 
 Stdlib only. Python 3.9+. No network.
 """
@@ -51,7 +74,9 @@ from __future__ import annotations
 
 import argparse
 import copy
+import hashlib
 import json
+import math
 import os
 import pathlib
 import re
@@ -59,10 +84,11 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from backup import replace_atomic  # noqa: E402  (atomic write, shared with backup.py)
-from measure import SAFE_SETTINGS, scalar  # noqa: E402  (the allowlist measure.py already exposes, not a copy of it)
+from measure import SAFE_SETTINGS, mask_command, mask_rule, scalar  # noqa: E402  (what measure.py already exposes, not copies)
 
 EVENT_RE = re.compile(r"[A-Z][A-Za-z]*")
 KINDS = ("allow", "ask", "deny")
+HANDLER_FIELDS = ("type", "command", "timeout", "onFailure")
 
 
 class Refused(Exception):
@@ -77,35 +103,77 @@ def show(value) -> str:
     return "(absent)" if value is None else json.dumps(value, indent=2, ensure_ascii=False)
 
 
+def digest(data) -> str:
+    return "absent" if data is None else hashlib.sha256(data).hexdigest()
+
+
+def plain(value):
+    """A value from the file as it may be printed: a number, a boolean, or a short plain word; anything else is hidden."""
+    if isinstance(value, (bool, int, float)) or value is None:
+        return value
+    return value if isinstance(value, str) and re.fullmatch(r"[A-Za-z][A-Za-z_-]{0,19}", value) else "(other)"
+
+
 # ---------------------------------------------------------------- reading and writing the file
 
+def reject_constant(name):
+    raise ValueError("non-finite number")
+
+
+def parse_float(text: str) -> float:
+    value = float(text)
+    mantissa = re.split(r"[eE]", text)[0]
+    if not math.isfinite(value) or (value == 0 and re.search(r"[1-9]", mantissa)):
+        raise ValueError("number out of range")
+    return value
+
+
+def no_repeated_keys(pairs):
+    keys = [k for k, _ in pairs]
+    if len(set(keys)) != len(keys):
+        raise ValueError("repeated key")
+    return dict(pairs)
+
+
+def check_links(given: pathlib.Path, follow: bool) -> pathlib.Path:
+    """The canonical path to write. Refuses a route through a symlink or junction unless follow."""
+    plain = pathlib.Path(os.path.abspath(given))
+    real = pathlib.Path(os.path.realpath(given))
+    if os.path.normcase(str(plain)) != os.path.normcase(str(real)) and not follow:
+        raise Refused(f"{plain} reaches the file through a symlink or junction, which leads to {real}; "
+                      "check that is the file you mean, then add --follow-links")
+    return real
+
+
 class Document:
-    def __init__(self, path: pathlib.Path, create: bool):
-        self.path = path.resolve()
+    def __init__(self, path: pathlib.Path, create: bool, follow_links: bool = False):
+        self.path = check_links(path, follow_links)
         self.bom, self.newline, self.indent, self.final_newline, self.mode = False, "\n", 2, True, 0o600
-        self.created = False
+        self.created, self.raw = False, None
         if self.path.is_dir():
-            raise Refused(f"{path} is a folder, not a settings file")
+            raise Refused(f"{self.path} is a folder, not a settings file")
         if not self.path.exists():
             if not create:
-                raise Refused(f"{path} does not exist; add --create to make it")
+                raise Refused(f"{self.path} does not exist; add --create to make it")
             self.data, self.created = {}, True
             return
         try:
-            raw = self.path.read_bytes()
+            self.raw = raw = self.path.read_bytes()
         except OSError as exc:
-            raise Refused(f"cannot read {path}: {type(exc).__name__}") from exc
+            raise Refused(f"cannot read {self.path}: {type(exc).__name__}") from exc
         self.bom = raw.startswith(b"\xef\xbb\xbf")
         try:
             text = raw.decode("utf-8-sig")
-            data = json.loads(text)
+            data = json.loads(text, object_pairs_hook=no_repeated_keys, parse_float=parse_float, parse_constant=reject_constant)
         except UnicodeDecodeError as exc:
-            raise Refused(f"{path} is not UTF-8 text") from exc
-        except ValueError as exc:  # position only: the message never repeats the file's content
-            where = f" (line {exc.lineno}, column {exc.colno})" if isinstance(exc, json.JSONDecodeError) else ""
-            raise Refused(f"{path} is not valid JSON{where}; it was not changed") from exc
+            raise Refused(f"{self.path} is not UTF-8 text") from exc
+        except json.JSONDecodeError as exc:  # position only: the message never repeats the file's content
+            raise Refused(f"{self.path} is not valid JSON (line {exc.lineno}, column {exc.colno}); it was not changed") from exc
+        except (ValueError, RecursionError) as exc:
+            raise Refused(f"{self.path} cannot be rewritten without changing it (a repeated key, a number out of range, "
+                          "NaN or Infinity, or too deep); it was not changed") from exc
         if not isinstance(data, dict):
-            raise Refused(f"{path} is JSON but not an object; it was not changed")
+            raise Refused(f"{self.path} is JSON but not an object; it was not changed")
         self.data = data
         self.newline = "\r\n" if "\r\n" in text else "\n"
         self.final_newline = text.endswith("\n")
@@ -116,19 +184,29 @@ class Document:
         except OSError:
             pass
 
+    @property
+    def sha256(self) -> str:
+        return digest(self.raw)
+
     def render(self) -> bytes:
-        text = json.dumps(self.data, indent=self.indent, ensure_ascii=False)
+        text = json.dumps(self.data, indent=self.indent, ensure_ascii=False, allow_nan=False)
         text = text.replace("\n", self.newline) + (self.newline if self.final_newline else "")
         return (b"\xef\xbb\xbf" if self.bom else b"") + text.encode("utf-8")
 
     def save(self) -> None:
+        try:  # the file must still be the one that was read: a change since would be overwritten
+            now = self.path.read_bytes() if self.path.exists() else None
+        except OSError as exc:
+            raise WriteFailed(f"could not re-read {self.path}: {type(exc).__name__}") from exc
+        if digest(now) != self.sha256:
+            raise Refused(f"{self.path} changed while the edit was being prepared; nothing was written")
         try:
             replace_atomic(self.path, self.render(), self.mode)
         except OSError as exc:
             raise WriteFailed(f"could not write {self.path}: {type(exc).__name__}: {exc.strerror or exc}") from exc
 
 
-# ---------------------------------------------------------------- operations: each returns (label, before, after)
+# ---------------------------------------------------------------- operations: each returns (label, before, after), display-ready
 
 # Hook events in the Claude Code hooks reference (snapshot of 2026-11-27). When kb/snapshots/cc-hooks.md is present,
 # the events in its tables are added, so a knowledge-base update widens the list without a code change.
@@ -171,24 +249,62 @@ def event_groups(data: dict, event: str, create: bool = False):
 
 
 def handlers(groups: list):
-    """(group, handler) for every command hook in the groups."""
-    return [(g, h) for g in groups for h in g.get("hooks", []) if isinstance(h, dict) and isinstance(h.get("command"), str)]
+    """[(index, group, handler)] for every command hook of the event, in file order. The index is what --index takes."""
+    found = [(g, h) for g in groups for h in g.get("hooks", []) if isinstance(h, dict) and isinstance(h.get("command"), str)]
+    return [(i, g, h) for i, (g, h) in enumerate(found)]
 
 
-def entry(group: dict, handler: dict) -> dict:
-    return ({"matcher": group["matcher"]} if "matcher" in group else {}) | {"hook": copy.deepcopy(handler)}
+def matcher_of(group: dict) -> str:
+    """A group's matcher as it may be printed: a short pattern of word characters, | . * : and -, else (other)."""
+    value = group.get("matcher", "")
+    return value if isinstance(value, str) and re.fullmatch(r"[\w|.*:-]{0,80}", value) else "(other)"
 
 
-def unique_match(groups: list, event: str, text: str):
-    if not text:
+def view(event: str, group: dict, handler: dict, index=None) -> dict:
+    """A hook as it is printed: event, matcher, the four fields it can carry with the command masked, other fields by name."""
+    shown = {"event": event}
+    if index is not None:
+        shown["index"] = index
+    if "matcher" in group:
+        shown["matcher"] = matcher_of(group)
+    for field in HANDLER_FIELDS:
+        if field in handler:
+            shown[field] = mask_command(handler[field]) if field == "command" else plain(handler[field])
+    others = sorted(k for k in handler if k not in HANDLER_FIELDS)
+    if others:
+        shown["other_fields"] = others
+    return shown
+
+
+def candidates(groups: list, event: str, only=None) -> str:
+    rows = [f"  [{i}] {event} matcher={matcher_of(g)!r} command: {mask_command(h['command'])}" if "matcher" in g else
+            f"  [{i}] {event} matcher=(none) command: {mask_command(h['command'])}"
+            for i, g, h in handlers(groups) if only is None or i in only]
+    return "\n".join(rows) if rows else "  (no command hooks under this event)"
+
+
+def pick(groups: list, event: str, text, index):
+    """The one (group, handler) the request names, or a refusal that lists candidates."""
+    if text is not None and not text:
         raise Refused("--command-contains needs some text")
-    found = [(g, h) for g, h in handlers(groups) if text in h["command"]]
+    if text is None and index is None:
+        raise Refused("give --command-contains TEXT or --index N")
+    every = handlers(groups)
+    if index is not None:
+        if not 0 <= index < len(every):
+            raise Refused(f"--index {index} is out of range for {event}; its command hooks are:\n{candidates(groups, event)}")
+        _, group, hook = every[index]
+        if text is not None and text not in hook["command"]:
+            raise Refused(f"the hook at index {index} does not contain the text given; nothing was changed")
+        return group, hook
+    found = [(i, g, h) for i, g, h in every if text in h["command"]]
     if len(found) == 1:
-        return found[0]
+        return found[0][1], found[0][2]
     if not found:
-        raise Refused(f"no hook command under {event} contains the text given; nothing was changed")
-    listing = "\n".join(f"  {h['command']}" for _, h in found)
-    raise Refused(f"{len(found)} hook commands under {event} contain the text given; make it match one. Candidates:\n{listing}")
+        raise Refused(f"no hook command under {event} contains the text given; nothing was changed. "
+                      f"Its command hooks are:\n{candidates(groups, event)}")
+    raise Refused(f"{len(found)} hook commands under {event} contain the text given; pick one with --index N. Candidates:\n"
+                  f"{candidates(groups, event, {i for i, _, _ in found})}")
 
 
 def add_hook(data: dict, a):
@@ -214,16 +330,16 @@ def add_hook(data: dict, a):
         group = ({"matcher": a.matcher} if a.matcher is not None else {}) | {"hooks": []}
         groups.append(group)
     group.setdefault("hooks", []).append(hook)
-    return f"hooks.{a.event} (hook added)", None, entry(group, hook)
+    return f"hooks.{a.event} (hook added)", None, view(a.event, group, hook)
 
 
 def remove_hook(data: dict, a):
     groups = event_groups(data, a.event)
-    group, hook = unique_match(groups, a.event, a.command_contains)
-    before = entry(group, hook)
-    group["hooks"].remove(hook)
+    group, hook = pick(groups, a.event, a.command_contains, a.index)
+    before = view(a.event, group, hook)
+    group["hooks"][:] = [h for h in group["hooks"] if h is not hook]  # by identity: an identical hook elsewhere stays
     if not group["hooks"]:
-        groups.remove(group)
+        groups[:] = [g for g in groups if g is not group]
     if not groups:
         del data["hooks"][a.event]
     return f"hooks.{a.event} (hook removed)", before, None
@@ -232,18 +348,20 @@ def remove_hook(data: dict, a):
 def set_hook_option(data: dict, a):
     if a.on_failure is None and a.timeout is None:
         raise Refused("give --on-failure, --timeout or both")
-    group, hook = unique_match(event_groups(data, a.event), a.event, a.command_contains)
-    before = entry(group, hook)
+    group, hook = pick(event_groups(data, a.event), a.event, a.command_contains, a.index)
+    old = {k: hook.get(k) for k in ("onFailure", "timeout")}
     if a.on_failure == "block":
         hook["onFailure"] = "block"
     elif a.on_failure == "default":
         hook.pop("onFailure", None)
     if a.timeout is not None:
         hook["timeout"] = a.timeout
-    after = entry(group, hook)
-    if after == before:
+    new = {k: hook.get(k) for k in ("onFailure", "timeout")}
+    if new == old:
         return f"hooks.{a.event} (options already so)", None, None
-    return f"hooks.{a.event} (hook options)", before, after
+    head = {"event": a.event} | ({"matcher": matcher_of(group)} if "matcher" in group else {})
+    changed = [k for k in old if old[k] != new[k]]
+    return (f"hooks.{a.event} (hook options)", head | {k: plain(old[k]) for k in changed}, head | {k: plain(new[k]) for k in changed})
 
 
 def permission_list(data: dict, kind: str, create: bool):
@@ -264,25 +382,29 @@ def permission_list(data: dict, kind: str, create: bool):
     return rules
 
 
+def masked(rules) -> list:
+    return [mask_rule(r) if isinstance(r, str) else f"({type(r).__name__})" for r in rules]
+
+
 def add_permission(data: dict, a):
     if not a.rule.strip():
         raise Refused("--rule needs a rule")
     existing = permission_list(data, a.kind, create=False)
     if existing is not None and a.rule in existing:
         return f"permissions.{a.kind} (already present)", None, None
-    before = None if existing is None else list(existing)
+    before = None if existing is None else masked(existing)
     rules = permission_list(data, a.kind, create=True)
     rules.append(a.rule)
-    return f"permissions.{a.kind} (rule added)", before, list(rules)
+    return f"permissions.{a.kind} (rule added)", before, masked(rules)
 
 
 def remove_permission(data: dict, a):
     rules = permission_list(data, a.kind, create=False)
     if rules is None or a.rule not in rules:
         return f"permissions.{a.kind} (rule not present)", None, None
-    before = list(rules)
+    before = masked(rules)
     rules.remove(a.rule)
-    return f"permissions.{a.kind} (rule removed)", before, list(rules)
+    return f"permissions.{a.kind} (rule removed)", before, masked(rules)
 
 
 def set_key(data: dict, a):
@@ -316,6 +438,16 @@ def positive(text: str) -> int:
     return value
 
 
+def index_number(text: str) -> int:
+    try:
+        value = int(text)
+    except ValueError:
+        raise argparse.ArgumentTypeError("a whole number") from None
+    if value < 0:
+        raise argparse.ArgumentTypeError("0 or more")
+    return value
+
+
 def make_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(prog="settings_edit.py", formatter_class=argparse.RawDescriptionHelpFormatter,
                                  description=(__doc__ or "").split("\n\n")[0],
@@ -324,10 +456,17 @@ def make_parser() -> argparse.ArgumentParser:
     common = argparse.ArgumentParser(add_help=False)
     common.add_argument("--dry-run", action="store_true", help="print what would change and write nothing")
     common.add_argument("--create", action="store_true", help="create the file as {} when it does not exist")
+    common.add_argument("--expect-sha256", default=None, metavar="H", help="refuse unless the file's sha256 is H now (absent for no file)")
+    common.add_argument("--follow-links", action="store_true", help="accept a path that goes through a symlink or junction")
     sub = ap.add_subparsers(dest="operation", required=True, metavar="OPERATION")
 
     def op(name: str, help_: str):
         return sub.add_parser(name, parents=[common], help=help_)
+
+    def select(p):
+        p.add_argument("--event", required=True)
+        p.add_argument("--command-contains", default=None, metavar="TEXT")
+        p.add_argument("--index", type=index_number, default=None, metavar="N", help="the index a refusal listed")
 
     p = op("add-hook", "add a command hook")
     p.add_argument("--event", required=True)
@@ -337,12 +476,10 @@ def make_parser() -> argparse.ArgumentParser:
     p.add_argument("--on-failure", choices=["block"], default=None)
     p.add_argument("--allow-unknown-event", action="store_true",
                    help="accept an event name not in the documented list (for an event newer than this plugin)")
-    p = op("remove-hook", "remove the one hook command containing TEXT")
-    p.add_argument("--event", required=True)
-    p.add_argument("--command-contains", required=True, metavar="TEXT")
-    p = op("set-hook-option", "set or clear onFailure, or set the timeout, of the one hook containing TEXT")
-    p.add_argument("--event", required=True)
-    p.add_argument("--command-contains", required=True, metavar="TEXT")
+    p = op("remove-hook", "remove the one hook command named by TEXT or --index")
+    select(p)
+    p = op("set-hook-option", "set or clear onFailure, or set the timeout, of the one hook named by TEXT or --index")
+    select(p)
     p.add_argument("--on-failure", choices=["block", "default"], default=None)
     p.add_argument("--timeout", type=positive, default=None)
     for name in ("add-permission", "remove-permission"):
@@ -361,16 +498,22 @@ def main(argv=None) -> int:
         if hasattr(stream, "reconfigure"):
             stream.reconfigure(encoding="utf-8")
     try:
-        doc = Document(pathlib.Path(args.file), args.create)
+        doc = Document(pathlib.Path(args.file), args.create, args.follow_links)
+        print(f"target: {doc.path}")
+        print(f"sha256: {doc.sha256}")
+        if args.expect_sha256 is not None and args.expect_sha256.strip().lower() != doc.sha256:
+            raise Refused("the file's sha256 is not the one expected (it changed since the preview); nothing was changed. "
+                          "Run again with --dry-run to see the current state")
         label, before, after = OPERATIONS[args.operation](doc.data, args)
         changed = before is not None or after is not None
         print(f"change: {label}")
-        if changed:
-            print(f"before: {show(before)}")
-            print(f"after: {show(after)}")
         if not changed:
             print("nothing to change")
-        elif args.dry_run:
+            return 0
+        print(f"before: {show(before)}")
+        print(f"after: {show(after)}")
+        print(f"new sha256: {digest(doc.render())}")
+        if args.dry_run:
             print("dry run: nothing written")
         else:
             doc.save()

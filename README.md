@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/assets/banner.svg" alt="grade-optimizer: brings your Claude Code setup up to the documented standard." width="100%">
+  <img src="docs/assets/banner.svg" alt="grade-optimizer: brings your Claude Code setup in line with the published guidance." width="100%">
 </p>
 
 <p align="center">
@@ -23,8 +23,9 @@
 
 # grade-optimizer
 
-A Claude Code plugin that brings your setup up to the standard Anthropic's own
-documentation describes. It measures what your setup loads, what that costs and
+A Claude Code plugin that brings your setup in line with what Anthropic's
+published documentation recommends. It is an independent review, not an
+Anthropic benchmark. It measures what your setup loads, what that costs and
 what actually gets used; reads it the way a senior engineer who has studied
 that documentation would; shows where it stands, what holds it back and what
 Claude Code offers that it is not using; and, when you ask, makes the changes
@@ -355,13 +356,15 @@ is what protects a review from them; they are queued for the next update. The sa
   finding and rounds 2 to 4 none, but in two of those rounds the reviewer presented 2 or 3 known, acceptable costs as
   defects. [evals/README.md](evals/README.md) has every round, including the
   one that got worse and why.
-- **Upgrades.** Three unattended `/grade-optimizer:upgrade` runs on the
-  planted setup, scored by a deterministic oracle on the edited files, fixed 6,
-  6 and 8 of 10 defects as the guides improved between runs; the two left in
-  the last run were held with a question, by design. No run lost a sound rule
-  or edited anything outside the setup, and on the clean setup all three made
-  no edit. A blind review after the last run found one defect the upgrade
-  introduced, a gap in the guard it rewrote. Small sample, one model:
+- **Upgrades.** Four unattended `/grade-optimizer:upgrade` runs on the
+  planted setup, all scored by the same deterministic oracle on the edited
+  files, fixed 6, 6, 6 and 8 of 10 defects as the guides changed between
+  runs. Of the two left in the last run, one was held with a question by
+  design and one was a judgment call that went the wrong way. No run lost a
+  sound rule or edited another file of the setup, and on the clean setup all
+  four made no edit. Two earlier runs rewrote the push guard with a bypass in
+  it; after the last run a blind review found the guard sound and no defect
+  the upgrade introduced. Small sample, one model:
   [evals/README.md](evals/README.md#upgrade-calibration).
 
 ## Limits

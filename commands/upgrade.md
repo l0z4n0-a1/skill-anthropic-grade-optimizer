@@ -78,7 +78,9 @@ delete:
 python "${CLAUDE_PLUGIN_ROOT}/scripts/backup.py" save <path> <path> ...
 ```
 
-Show the person the backup directory and the restore command it prints. The
+Show the person the backup directory and the restore command it prints; it
+uses a copy of the backup script kept in the backup, so it still works after
+the plugin is updated or removed. The
 backup holds copies of settings files, which can contain secrets; it stays on
 this machine, owner-only where the system allows, and you never read the
 copies or print them.
@@ -86,18 +88,35 @@ copies or print them.
 ## 4. Apply
 
 Apply one change at a time, in the order of the plan, with the Edit and Write
-tools, so the person sees and approves each edit as Claude Code shows it.
+tools. Approval comes from the person's answer in step 2, not from a tool
+prompt: depending on the permission mode, Claude Code may apply an edit
+without asking, so never treat the absence of a prompt as consent, and apply
+nothing outside the changes they picked. If an edit has to differ from the one
+they saw, show the new version and ask again.
+
 Settings files are the exception: you do not open them, so change them only
-with `scripts/settings_edit.py`, first with `--dry-run` to show the person the
-change, then without it. That is how a hook gets wired, removed or set to block
-on failure, and how a rule in prose becomes a permission rule; a plan that
-leaves those for the person because settings are off limits has skipped the
-changes that matter most.
-After each, check it the way the plan said: read the edited file back where
-the change is structural; where it is behavioral and safe to exercise, exercise
-it. A changed hook script can be run with a sample input on stdin and its exit
-code read, since that is the person's own script and testing it is what they
-asked for. Do not run anything else from the setup.
+with `scripts/settings_edit.py`. Run it first with `--dry-run`, which shows the
+change and prints the file's hash, then for real with `--expect-sha256 <hash>`,
+so a file that changed in between is refused rather than overwritten. That is
+how a hook gets wired, removed or set to block on failure, and how a rule in
+prose becomes a permission rule; a plan that leaves those for the person
+because settings are off limits has skipped the changes that matter most.
+
+After each edit, record it in the backup at once, so a later restore can tell
+your edits from anyone else's and an interrupted run can still be undone:
+
+```
+python "${CLAUDE_PLUGIN_ROOT}/scripts/backup.py" record <backup dir> <path>
+```
+
+Then check it the way the plan said: read the edited file back where the
+change is structural; where it is behavioral and safe to exercise, exercise
+it. A hook script you changed can be run with a sample input on stdin and its
+exit code read, after you have read the script and seen that the sample cannot
+make it act (a guard that only decides is safe; one that also pushes, deletes
+or sends is not), and with the person's yes for that run. Do not run anything
+else from the setup. Scratch files for a test go in the system's temporary
+directory, never in the setup or the project.
 
 Test a guard the way someone trying to get past it would. For a command
 guard that means the plain form, the same command with options before the
@@ -114,13 +133,6 @@ one that is not valid JSON, and its dry run shows what you need.
 
 If a change fails its check, stop and say so before the next one. Undo it with
 the backup when the person prefers, rather than layering a second fix on top.
-
-When the edits are done, record their result in the backup, so a later restore
-can tell your edits from anyone else's:
-
-```
-python "${CLAUDE_PLUGIN_ROOT}/scripts/backup.py" record <backup dir>
-```
 
 ## 5. Measure again and report
 

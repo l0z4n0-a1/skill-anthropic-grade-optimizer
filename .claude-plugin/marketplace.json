@@ -8,7 +8,7 @@
     {
       "name": "grade-optimizer",
       "source": "./",
-      "description": "Brings a Claude Code setup up to the standard Anthropic's documentation describes: measures it, reviews it as a system, shows what it leaves unused, and applies the changes you approve, each with its source quoted."
+      "description": "Brings a Claude Code setup in line with Anthropic's published guidance, as an independent review: measures it, reviews it as a system, shows what it leaves unused, and applies the changes you approve, each with its source quoted."
     }
   ]
 }

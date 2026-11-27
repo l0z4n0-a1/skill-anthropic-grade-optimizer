@@ -5,7 +5,7 @@ All notable changes to grade-optimizer follow [Keep a Changelog](https://keepach
 ## [2.2.0] - 2026-11-27 - From reviewer to upgrade
 
 Version 2.1 told you what to change. This release makes the changes with you,
-shows where the setup stands against the documented standard, and looks for
+shows where the setup stands against the published guidance, and looks for
 what the setup leaves unused.
 
 ### Added
@@ -22,11 +22,21 @@ what the setup leaves unused.
   does not fit, and the claims behind it. An unused capability is never a
   finding by itself. Includes five documented facts that contradict common
   belief.
-- `scripts/backup.py`: save, record, status and an all-or-nothing atomic
-  restore that refuses to overwrite later edits.
+- `scripts/backup.py`: save, record (per file, right after each edit), status
+  and restore. Restore checks every file before it replaces any, replaces
+  each one atomically, refuses to overwrite edits made after the upgrade, and
+  can be run again to finish one that stopped part-way. The backup carries
+  its own copy of the script, so the restore command survives a plugin update.
 - `scripts/settings_edit.py`: changes hooks, permission rules and allowlisted
   settings keys without the model reading the settings file; prints only the
-  changed region; refuses hook events Claude Code does not document.
+  changed region, with hook commands masked to program and script name;
+  `--dry-run` prints the file's hash and `--expect-sha256` refuses a file
+  changed since; `--index` picks one of several matching hooks; refuses hook
+  events Claude Code does not document, a file that cannot be rewritten
+  without changing a value, and a path that leads through a link.
+- Hook commands and long or secret-looking permission rules are masked in
+  `measure.py` output as well, so a credential written into a hook never
+  reaches the model.
 - `measure.py`: a `features` block (what is configured, from records it
   already reads). `schema_version` unchanged, since the block only adds keys.
 - `evals/check_upgrade.py`: a deterministic oracle for an upgraded `planted`
@@ -34,7 +44,7 @@ what the setup leaves unused.
 
 ### Changed
 - Positioning: the README, banner, manifests and skill description lead with
-  the outcome, a setup brought up to the documented standard; the quote is the
+  the outcome, a setup brought in line with the published guidance; the quote is the
   reason to trust a change.
 
 ### Docs (also since 2.1.0)

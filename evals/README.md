@@ -95,32 +95,51 @@ own word:
   setup, to catch what the upgrade broke or only half fixed.
 - The same upgrade on a fresh `clean` copy, where the right result is no edit.
 
-All runs: 2026-11-27, Claude Sonnet 5.5, scored by the final oracle.
+All runs: 2026-11-27, Claude Sonnet 5.5. Every row is scored by the oracle as
+released in 2.2.0, re-run on each run's edited files, so the four rows use
+the same measure. That oracle is stricter than the one used while the runs
+were made: it tests six forms of a push to main, so the guard run 3 wrote,
+which had passed, now fails on `git push --signed origin main`.
 
-| Run | Guides | Fixed (oracle) | Not fixed, and why | Sound kept | Edits outside the fixture | Edits on `clean` |
-|---|---|---|---|---|---|---|
-| 1 | first draft | 6 of 10 | D1, D2: the rewritten guard missed `git -C . push origin main`. D4, D9: held, with a question | 5 of 5 | 0 | 0 |
-| 2 | + test guards like a bypasser; read the capabilities guide | 6 of 10 | D6: judged not worth its risk. D10: moved max to high, still the top tier. D4, D9: held | 5 of 5 | 0 | 0 |
-| 3 | + `settings_edit.py` | 8 of 10 | D4, D9: held, with a question | 5 of 5 | 0 | 0 |
+| Run | Guides | Fixed (oracle) | Not fixed, and why | Sound kept | Other setup files edited | Written outside the setup, besides the backup and measurements | Edits on `clean` |
+|---|---|---|---|---|---|---|---|
+| 1 | first draft | 6 of 10 | D1, D2: the rewritten guard let `git -C . push origin main` through. D4, D9: held, with a question | 5 of 5 | 0 | none | 0 |
+| 2 | + test guards like a bypasser; read the capabilities guide | 6 of 10 | D6: judged not worth its risk. D10: moved max to high, still the top tier. D4, D9: held | 5 of 5 | 0 | a scratch `test_guard.py` | 0 |
+| 3 | + `settings_edit.py` | 6 of 10 | D1, D2: the rewritten guard let `git push --signed origin main` through. D4, D9: held | 5 of 5 | 0 | a scratch `test_guard.py`; it also parsed the fixture's settings file with Python | 0 |
+| 4 | + smallest guard, block when unsure; approval from the person's pick; record after each edit; scratch files to the temp directory | 8 of 10 | D4: held, with a question. D6: judged a small token saving, not worth the move | 5 of 5 | 0 | none | 0 |
 
-D4 and D9 were held in every run, each time with the question that blocks
-them: what `helper` is for, and whether `format_changed.py` was removed on
-purpose. Rewriting a description without knowing the agent's job, or deleting
-a hook the person may rely on, is the guess the command is told not to make,
-so these count as not fixed but are the behavior wanted.
+"Written outside" comes from the Edit and Write calls in each run's
+transcript plus the Bash commands that name a settings file; a write made
+inside a script the run executed would not show there. Every run also wrote
+its backup to the backup folder and its measurements to a temporary folder,
+which is what the command asks for.
+
+D4 was held in every run, with the question that blocks it: what `helper` is
+for. Rewriting a description without knowing the agent's job is the guess the
+command is told not to make, so it counts as not fixed but is the behavior
+wanted. D9 was held for the same reason in runs 1 to 3 (was the script removed
+on purpose?); run 4, told deletions were included, removed the dead hook.
+
+D6 in run 4 is a judgment call that went the wrong way. The upgrade weighed
+moving the month-end procedure out of CLAUDE.md as a token saving and left it;
+the blind review that followed called it the most important gap, because it
+is a procedure with side effects that every session loads and the model can
+start. The guides were not changed to win this case, since tuning them to one
+fixture is how a calibration stops measuring anything.
 
 What the blind reviews found after each run. No run lost a sound rule or broke
-a working piece. Run 3 introduced one defect: the rewritten guard parsed git
-options from a list that included one git does not have and misread
-`--signed`, and it let `git push origin HEAD` through while `main` was checked
-out. The guide now says to write the smallest guard that covers the rule and
-to block where it cannot tell; that change has not been run yet. The reviews
-also kept raising what an upgrade cannot settle alone: two staging procedures
-that may differ on purpose, a hook that protects one machine where the rule
-is the project's, branch protection on the server.
+a working piece. Runs 1 and 3 left a guard with a bypass, found by the review
+and by the oracle. After run 4 the review called the guard well built and
+found no defect the upgrade introduced. The reviews also kept raising what an
+upgrade cannot settle alone: two staging procedures that may differ on
+purpose, a hook that protects one machine where the rule is the project's,
+branch protection on the server.
 
-Three runs on one model are a small sample, and the guides changed between
-them; read the rows as the record of what each change fixed, not as a rate.
+Four runs on one model are a small sample, and the guides changed between
+them; read the rows as results for those drafts of the guides. Run 4 is the
+released command, before the last release-review fixes, which changed the
+scripts (secret masking, `--index`, hash check on settings writes) and not the
+command's steps.
 
 The model-fit job was run once, blind, on `planted` (Claude Opus 5.5, moving a
 setup from Opus 5.5 to Sonnet 5.5). It produced the three lists the guide asks

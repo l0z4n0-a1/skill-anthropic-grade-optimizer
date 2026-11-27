@@ -235,8 +235,10 @@ section is never left out: when none fit, say so in a line and name the
 signals you looked for, so the person can tell "nothing fits" from "not
 looked at".
 
-The standard board puts the setup beside what Anthropic's documentation
-describes, one row for each of the first six questions:
+The standard board puts the setup beside this plugin's reading of Anthropic's
+published guidance, one row for each of the first six questions. Say so above
+the board in one line: the standard column is drawn from the documentation,
+and the meets or gap verdict is the review's judgment.
 
 | Question | Standard (from `kb.py core`) | Here |
 |---|---|---|

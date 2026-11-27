@@ -241,6 +241,137 @@ class BackupTest(unittest.TestCase):
             self.assertEqual(self.run_main("restore", folder)[0], 0)
         self.assertIn((self.a.parent, self.a), seen)
 
+    # -- record by path
+
+    def test_record_with_paths_records_only_those_and_refuses_a_path_the_backup_does_not_hold(self):
+        folder = self.save()
+        self.edit()
+        code, out, err = self.run_main("record", folder, self.a)
+        self.assertEqual(code, 0, err)
+        self.assertIn(str(self.a), out)
+        self.assertNotIn(str(self.b), out)
+        by_path = {e["path"]: e for e in json.loads((folder / "manifest.json").read_text(encoding="utf-8"))["files"]}
+        self.assertEqual(by_path[str(self.a)]["post_edit_sha256"], backup.sha256(self.a.read_bytes()))
+        self.assertIsNone(by_path[str(self.b)]["post_edit_sha256"])
+        self.assertIsNone(by_path[str(self.new)]["post_edit_sha256"])
+        before = (folder / "manifest.json").read_bytes()
+        code, _, err = self.run_main("record", folder, self.setup / "other.json")
+        self.assertEqual(code, 2)
+        self.assertIn("does not hold", err)
+        self.assertEqual((folder / "manifest.json").read_bytes(), before)
+
+    def test_a_file_changed_between_two_per_path_records_is_not_adopted_as_an_edit(self):
+        folder = self.save()
+        self.a.write_text('{"model": "sonnet"}\n', encoding="utf-8")
+        self.run_main("record", folder, self.a)
+        self.b.write_text("someone else edited this\n", encoding="utf-8")  # never recorded
+        code, _, err = self.run_main("restore", folder)
+        self.assertEqual(code, 2)
+        self.assertIn(str(self.b), err)
+        self.assertEqual(self.a.read_text(encoding="utf-8"), '{"model": "sonnet"}\n')  # nothing was touched
+
+    # -- redirected paths
+
+    def test_restore_refuses_a_path_that_no_longer_resolves_to_the_recorded_one_even_with_force(self):
+        folder = self.save()
+        self.edit()
+        self.run_main("record", folder)
+        elsewhere = self.base / "elsewhere"
+        real_dir = os.path.realpath
+
+        def redirect(path, *a, **k):
+            text = str(path)
+            if os.path.normcase(text).startswith(os.path.normcase(str(self.setup / "sub"))):
+                return str(elsewhere / "sub" / os.path.basename(text))
+            return real_dir(path, *a, **k)
+
+        for extra in ((), ("--force",)):
+            with mock.patch.object(backup.os.path, "realpath", redirect):
+                code, _, err = self.run_main("restore", folder, *extra)
+            self.assertEqual(code, 2, extra)
+            self.assertIn("no longer resolve", err)
+            self.assertIn(str(self.b), err)
+            self.assertEqual(self.a.read_text(encoding="utf-8"), '{"model": "sonnet"}\n')  # nothing was touched
+        self.assertEqual(self.run_main("restore", folder)[0], 0)  # unredirected: fine
+
+    def test_restore_refuses_a_parent_folder_replaced_by_a_real_symlink(self):
+        folder = self.save()
+        self.edit()
+        self.run_main("record", folder)
+        moved = self.base / "moved-sub"
+        (self.setup / "sub").rename(moved)
+        try:
+            os.symlink(moved, self.setup / "sub", target_is_directory=True)
+        except (OSError, NotImplementedError):
+            self.skipTest("this system will not create symlinks for the test")
+        code, _, err = self.run_main("restore", folder, "--force")
+        self.assertEqual(code, 2)
+        self.assertIn("no longer resolve", err)
+        self.assertEqual(self.a.read_text(encoding="utf-8"), '{"model": "sonnet"}\n')
+
+    # -- partial restore
+
+    def test_a_failure_on_the_second_of_three_files_is_reported_per_file_and_a_rerun_finishes_the_job(self):
+        c = self.put("c.txt", "original c\n")
+        folder = self.save(self.a, self.b, c)
+        self.a.write_text("edited a\n", encoding="utf-8")
+        self.b.write_text("edited b\n", encoding="utf-8")
+        c.write_text("edited c\n", encoding="utf-8")
+        self.assertEqual(self.run_main("record", folder)[0], 0)
+        real = os.replace
+
+        def lock_b(src, dst):
+            if pathlib.Path(dst) == self.b:
+                raise PermissionError(13, "locked")
+            return real(src, dst)
+
+        with mock.patch.object(backup.os, "replace", lock_b):
+            code, out, err = self.run_main("restore", folder)
+        self.assertEqual(code, 1)
+        self.assertIn(f"restored: {self.a}", out)
+        self.assertIn(f"failed: {self.b}", out)
+        self.assertIn(f"restored: {c}", out)
+        self.assertIn("run the same restore again", err)
+        self.assertEqual([self.a.read_text(encoding="utf-8"), self.b.read_text(encoding="utf-8"), c.read_text(encoding="utf-8")],
+                         ['{"token": "SECRET-A", "model": "opus"}\n', "edited b\n", "original c\n"])
+        self.assertEqual(sorted(p.name for p in self.setup.iterdir() if p.is_file()), ["a.json", "c.txt"])  # no temp files
+        status = self.run_main("status", folder)[1]
+        self.assertIn(f"original: {self.a}", status)
+        self.assertIn(f"edited: {self.b}", status)
+        code, out, err = self.run_main("restore", folder)  # the same command, no --force, finishes it
+        self.assertEqual(code, 0, err)
+        self.assertEqual(out.strip().splitlines(), [f"restored: {self.b}"])
+        self.assertEqual(self.b.read_text(encoding="utf-8"), "original b\n")
+
+    # -- the restore command and the copy of this script
+
+    def test_save_keeps_a_copy_of_this_script_in_the_backup_and_the_printed_command_uses_it(self):
+        code, out, err = self.run_main("save", "--out", self.store, self.a)
+        self.assertEqual(code, 0, err)
+        folder = pathlib.Path(re.search(r"^folder: (.+)$", out, re.M).group(1))
+        self.assertEqual((folder / "backup.py").read_bytes(), (ROOT / "scripts" / "backup.py").read_bytes())
+        command = out.split("restore with: ")[1].strip()
+        self.assertIn(str(folder / "backup.py"), command)
+        self.assertNotIn(str(ROOT / "scripts"), command)
+        self.a.write_text("edited\n", encoding="utf-8")
+        self.run_main("record", folder)
+        done = subprocess.run([sys.executable, "-I", str(folder / "backup.py"), "restore", str(folder)],
+                              capture_output=True, text=True, encoding="utf-8")
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertEqual(self.a.read_text(encoding="utf-8"), '{"token": "SECRET-A", "model": "opus"}\n')
+
+    def test_the_restore_command_is_quoted_for_the_platform(self):
+        folder = pathlib.Path(self.base / "my backups" / "it's here")
+        script = str(folder / "backup.py")
+        with mock.patch.object(backup.sys, "executable", "C:\\Program Files\\Python\\python.exe"):
+            ps = backup.restore_command(folder, windows=True)
+            sh = backup.restore_command(folder, windows=False)
+        self.assertEqual(ps, "& 'C:\\Program Files\\Python\\python.exe' '" + script.replace("'", "''") + "' 'restore' '"
+                         + str(folder).replace("'", "''") + "'")
+        self.assertEqual(sh, " ".join(__import__("shlex").quote(a) for a in
+                                      ["C:\\Program Files\\Python\\python.exe", script, "restore", str(folder)]))
+        self.assertIn("''", ps)
+
     def test_the_command_line_exit_codes(self):
         script = str(ROOT / "scripts" / "backup.py")
 

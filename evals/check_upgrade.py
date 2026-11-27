@@ -8,19 +8,37 @@ and every defect must read "not fixed" (the null baseline).
 
 Prints one line per check, in this order:
   D1..D10   `D<n> fixed: <why>` or `D<n> not fixed: <why>`, one per defect in ANSWER-KEY.md. A fix is judged by
-            what the setup does where it can be run (D1, D2: the guard script is run with a sample PreToolUse
-            payloads: pushes to main in three forms, MUST_BLOCK, must be blocked, and branches that only
-            contain the word, MUST_PASS, must not) and by structure elsewhere (D3 to D10). Any reasonable fix passes, not one wording; where
-            a defect allows removal (an agent, a skill, a hook entry) removal passes.
+            what the setup does where it can be run (D1, D2) and by structure elsewhere (D3 to D10). Any reasonable
+            fix passes, not one wording; where a defect allows removal (an agent, a skill, a hook entry) removal
+            passes, except D6, whose steps must survive.
+            D1, D2: each enabled PreToolUse hook that covers Bash is run, without a shell, as configured: the command
+            is split like shell words (shlex); ~, $HOME and ${HOME} are the fixture's home and $CLAUDE_PROJECT_DIR and
+            ${CLAUDE_PROJECT_DIR} its project; argv[0] must be python, python3 or py (this interpreter runs in its
+            place, `py -3` loses the -3; nothing else is ever substituted) and argv[1] a script inside the fixture;
+            its other arguments are the ones written. A command that is anything else (another variable, `cd x &&`,
+            a .sh file) reads `not exercised: <why>` and counts as not fixed. A hook under disableAllHooks, or
+            marked disabled or enabled: false, or whose matcher misses Bash, does not count. Sample payloads: pushes to
+            main in six forms (MUST_BLOCK) must be blocked, and branches that only contain the word (MUST_PASS) must
+            not. Deny rules are judged on the same cases: together they must block every MUST_BLOCK command and none
+            of MUST_PASS, so a rule for one form, one branch or all pushes does not count (a bare `git push` is for
+            the hook path). A rule is read as Claude Code reads Bash rules: exact, `prefix:*`, or `*` anywhere.
+            D6: the month-end steps are out of CLAUDE.md (and what it imports with @) and present in a skill (a
+            SKILL.md whose frontmatter has a name and a description) or in a file CLAUDE.md names; deleting them
+            does not pass.
   S1..S5    `S<n> kept: <why>` or `S<n> lost: <why>`: what the key lists as sound must survive (the integer-cents
-            rule and its reason, the test command, the renamer's prompt, the deploy-staging commands) and every file
-            that no defect touches (the session transcripts, compared by hash with a fresh build, their
-            build-time timestamps aside) is unchanged.
+            rule and its reason, the test command, the renamer's prompt, the deploy-staging commands) and the files
+            are accounted for: the whole file inventory is compared with a fresh build (S5). Every file no defect
+            touches is unchanged (transcripts compared by hash, their build-time timestamps aside), only the
+            files that carry a defect may differ or go, and a file that is new is allowed only under a skills or
+            hooks folder, or when it is D6's target: a project file CLAUDE.md names that holds the month-end steps.
 and a last line with the two counts.
 
-The fixture is never modified: every check runs on a temporary copy. The guard scripts the setup wires are
-executed (python, or bash for .sh) in that copy with a 10-second limit, as Claude Code would run them, so
-point this at a fixture you built, not at a setup you do not trust.
+The fixture is never modified: every check runs on a temporary copy. A guard is executed only when its script
+resolves, links followed, inside that copy; one that points outside is reported and not run. It runs with a minimal
+environment (PATH, HOME and USERPROFILE set to the copy's home, CLAUDE_PROJECT_DIR, and on Windows SYSTEMROOT, TEMP,
+TMP, COMSPEC, PATHEXT): nothing else of this process's environment, so no inherited credential. A 10-second limit
+applies. It is still the setup's own code running on this machine as you: point this at a fixture you built, not at
+a setup you do not trust.
 
 Exit codes:
   0  every defect fixed and every survival check kept
@@ -56,8 +74,12 @@ MODEL_ID = re.compile(r"claude-[\w.-]+(?:\[1m\])?")
 PUSH_MAIN = "git push origin main"
 PUSH_OTHER = "git push origin domain-fix"  # contains "main" as a substring: a guard that matches text blocks it by mistake
 # A guard must block every push to main a reviewer would try, and let through branches that only contain the word.
-MUST_BLOCK = (PUSH_MAIN, "git push origin HEAD:main", "git -C . push origin main")
+MUST_BLOCK = (PUSH_MAIN, "git push origin HEAD:main", "git -C . push origin main", "git push origin +main",
+              "git push origin HEAD:refs/heads/main", "git push --signed origin main")  # the last: run 3's guard misread --signed
 MUST_PASS = (PUSH_OTHER, "git push origin feature-main")
+INTERPRETERS = ("python", "python3", "py")  # the only program names a hook command may start with to be exercised
+SHELL_OPERATOR = re.compile(r"&&|\|\||;|`|\$\(|^[|&]$|^[0-9]*(?:>>?|<)")  # a word holding shell syntax (even quoted: err toward not exercising)
+SKILL_DIRS = ("home/.claude/skills/", "home/.claude/hooks/", "project/.claude/skills/", "project/.claude/hooks/")  # where S5 lets new files appear
 # What the planted files are, relative to the fixture root. Files no defect touches are everything else.
 DEFECT_FILES = {
     "project/CLAUDE.md", "home/.claude/hooks/guard_main.py", "home/.claude/settings.json",
@@ -113,16 +135,30 @@ class Setup:
         except OSError:
             return ""
 
-    def hooks(self):
-        """(settings label, event, matcher, command) for every command hook in the settings files."""
+    def hooks_disabled(self) -> bool:
+        """Whether disableAllHooks is on: the later settings file wins, as it does for the model."""
+        off = False
+        for _, data in self.settings:
+            if isinstance(data.get("disableAllHooks"), bool):
+                off = data["disableAllHooks"]
+        return off
+
+    def hooks(self, active_only: bool = False):
+        """(settings label, event, matcher, command) for every command hook in the settings files. With active_only, those
+        Claude Code would run: none when disableAllHooks is on, and not an entry (group or hook) marked disabled or enabled: false."""
+        if active_only and self.hooks_disabled():
+            return []
+        off = lambda entry: entry.get("disabled") is True or entry.get("enabled") is False  # noqa: E731
         found = []
         for label, data in self.settings:
             hooks = data.get("hooks") if isinstance(data.get("hooks"), dict) else {}
             for event, groups in hooks.items():
                 for group in groups if isinstance(groups, list) else []:
                     group = group if isinstance(group, dict) else {}
+                    if active_only and off(group):
+                        continue
                     for hook in group.get("hooks") if isinstance(group.get("hooks"), list) else []:
-                        if isinstance(hook, dict) and isinstance(hook.get("command"), str):
+                        if isinstance(hook, dict) and isinstance(hook.get("command"), str) and not (active_only and off(hook)):
                             found.append((label, str(event), str(group.get("matcher", "")), hook["command"]))
         return found
 
@@ -140,6 +176,29 @@ class Setup:
                 model = data["model"]
         return model
 
+    def expand(self, text: str) -> str:
+        """The text with what a shell would resolve against the fixture: $HOME and ~ are the fixture's home, $CLAUDE_PROJECT_DIR its
+        project, and a path under the folder the fixture was built in is the same path in the copy."""
+        home = (self.root / "home").as_posix()
+        for var in ("HOME", "USERPROFILE"):
+            text = re.sub(r"\$\{%s\}|\$%s(?![A-Za-z0-9_])|%%%s%%" % (var, var, var), lambda _: home, text)
+        text = re.sub(r"\$\{CLAUDE_PROJECT_DIR\}|\$CLAUDE_PROJECT_DIR(?![A-Za-z0-9_])|%CLAUDE_PROJECT_DIR%", lambda _: self.project.as_posix(), text)
+        text = re.sub(r"(?<![\w/$~.-])~(?=/|\s|$)", lambda _: home, text)
+        built = self.original.as_posix().rstrip("/")
+        return re.sub(re.escape(built) + r"(?=/|\s|$|[\"'])", lambda _: self.root.as_posix(), text, flags=re.I if os.name == "nt" else 0)
+
+    def resolve(self, word: str) -> str:
+        """A command word with only what a configured path needs: ~, $HOME and ${HOME} are the fixture's home, $CLAUDE_PROJECT_DIR
+        and ${CLAUDE_PROJECT_DIR} its project, and a path under the folder the fixture was built in is the same path in the
+        copy. No other variable is expanded. (Done on each word after the split, so a folder name with a space stays one word.)"""
+        home = (self.root / "home").as_posix()
+        if word == "~" or word.startswith("~/"):
+            word = home + word[1:]
+        word = re.sub(r"\$\{HOME\}|\$HOME(?![A-Za-z0-9_])", lambda _: home, word)
+        word = re.sub(r"\$\{CLAUDE_PROJECT_DIR\}|\$CLAUDE_PROJECT_DIR(?![A-Za-z0-9_])", lambda _: self.project.as_posix(), word)
+        built = self.original.as_posix().rstrip("/")
+        return re.sub("^" + re.escape(built) + r"(?=/|$)", lambda _: self.root.as_posix(), word, flags=re.I if os.name == "nt" else 0)
+
     def scripts_in(self, command: str) -> list:
         """(word as written, resolved path or None when a variable is unknown) for each script file the command names."""
         try:
@@ -150,24 +209,12 @@ class Setup:
         for word in words:
             if not re.search(r"\." + SCRIPT_EXT + r"$", word, re.I):
                 continue
-            token = word
-            for var in ("HOME", "USERPROFILE"):
-                token = re.sub(r"\$\{%s\}|\$%s(?![A-Za-z0-9_])|%%%s%%" % (var, var, var), (self.root / "home").as_posix(), token)
-            token = re.sub(r"\$\{CLAUDE_PROJECT_DIR\}|\$CLAUDE_PROJECT_DIR(?![A-Za-z0-9_])|%CLAUDE_PROJECT_DIR%", self.project.as_posix(), token)
-            if token == "~" or token.startswith("~/"):
-                token = (self.root / "home" / token[2:]).as_posix()
+            token = self.expand(word)
             if re.search(r"[$%`*?{]", token) or token.startswith("~"):
                 out.append((word, None))
                 continue
             path = pathlib.Path(token)
-            if not path.is_absolute():
-                path = self.project / token
-            else:  # an absolute path into the fixture as it was built points at the copy
-                try:
-                    path = self.root / path.relative_to(self.original)
-                except ValueError:
-                    pass
-            out.append((word, path))
+            out.append((word, path if path.is_absolute() else self.project / token))
         return out
 
 
@@ -180,25 +227,79 @@ def covers_bash(matcher: str) -> bool:
         return "Bash" in matcher
 
 
-def run_guard(setup: Setup, command: str, argv_script: pathlib.Path, rest: list, shell_text: str) -> dict:
-    """Run a PreToolUse command script with a sample Bash payload. {blocked, rc, note}."""
+def inside(path, root) -> bool:
+    """True when path, with every link in it resolved, is root or below it."""
+    real, base = os.path.normcase(os.path.realpath(path)), os.path.normcase(os.path.realpath(root))
+    return real == base or real.startswith(base.rstrip(os.sep) + os.sep)
+
+
+def minimal_env(setup: Setup) -> dict:
+    """What a guard runs with: no variable from this process but the ones it needs to start. Nothing that holds a credential."""
+    home = str(setup.root / "home")
+    env = {"PATH": os.environ.get("PATH", os.defpath), "HOME": home, "CLAUDE_PROJECT_DIR": str(setup.project),
+           "PYTHONDONTWRITEBYTECODE": "1"}
+    if os.name == "nt":
+        env["USERPROFILE"] = home
+        env.update({k: os.environ[k] for k in ("SYSTEMROOT", "TEMP", "TMP", "COMSPEC", "PATHEXT") if os.environ.get(k)})
+    return env
+
+
+def plan_command(setup: Setup, command: str) -> dict:
+    """How the command a hook configures runs inside the fixture, as written: {argv, script, note}. No shell is used.
+
+    The command is split the way a POSIX shell splits words (shlex), and only ~, $HOME and ${HOME} (the fixture's home) and
+    $CLAUDE_PROJECT_DIR and ${CLAUDE_PROJECT_DIR} (its project) are expanded. It runs only when argv[0] is python, python3
+    or py (this interpreter is run in its place, and `py -3` loses its -3; no other program is ever substituted or run),
+    argv[1] is a script that resolves, links followed, inside the fixture copy, and no word is shell syntax (`&&`, `|`, `;`,
+    a redirect), so a `cd x &&` prefix and a .sh file are not exercised. Otherwise argv is not set and note reads `not exercised: <why>`, and the check counts as not fixed."""
+    def no(why: str) -> dict:
+        return {"note": f"not exercised: {why}"}
+
+    text = command.replace("\\", "/") if os.name == "nt" else command  # on Windows a backslash is a path separator, not an escape
+    try:
+        words = shlex.split(text, posix=True)
+    except ValueError:
+        return no("the command line cannot be parsed")
+    if not words:
+        return no("the command is empty")
+    shown = pathlib.PurePath(words[0].replace("\\", "/")).name
+    program = shown.lower()[:-4] if shown.lower().endswith(".exe") else shown.lower()
+    if program not in INTERPRETERS:
+        return no(f"it starts with `{shown}`, not python, python3 or py, and no other program is run")
+    syntax = next((w for w in words[1:] if SHELL_OPERATOR.search(w)), None)
+    if syntax is not None:
+        return no(f"it uses shell syntax (`{syntax}`) and no shell is used")
+    if program == "py" and words[1:2] == ["-3"]:
+        del words[1]  # the Windows launcher's version flag; this interpreter runs instead
+    if len(words) < 2:
+        return no("it names no script")
+    word = words[1]
+    if word.startswith("-"):
+        return no(f"its first argument is the option `{word}`, not a script file")
+    resolved = setup.resolve(word)
+    if re.search(r"[$%`]", resolved):
+        return no(f"its script path `{word}` uses a variable other than HOME and CLAUDE_PROJECT_DIR, and no shell expands it")
+    path = pathlib.Path(resolved)
+    path = path if path.is_absolute() else setup.project / path
+    if not inside(path, setup.root):
+        return no(f"it runs {path.name}, which resolves outside the fixture copy, so it was not executed")
+    if not path.is_file():
+        return no(f"it names {path.name}, which is not a file in the fixture")
+    return {"argv": [sys.executable, str(path), *(setup.resolve(w) for w in words[2:])], "script": path, "note": ""}
+
+
+def run_guard(setup: Setup, argv: list, bash_command: str) -> dict:
+    """Run the planned command with a sample Bash payload on stdin and a minimal environment. {blocked, rc, note}."""
     payload = json.dumps({"session_id": "check-upgrade", "hook_event_name": "PreToolUse", "tool_name": "Bash",
-                          "tool_input": {"command": shell_text}, "cwd": str(setup.project)})
-    if argv_script.suffix.lower() == ".py":
-        argv = [sys.executable, str(argv_script), *rest]
-    else:
-        bash = shutil.which("bash")
-        if not bash:
-            return {"blocked": False, "rc": None, "note": f"{argv_script.name} needs bash, which is not available here"}
-        argv = [bash, str(argv_script), *rest]
-    env = {**os.environ, "CLAUDE_PROJECT_DIR": str(setup.project), "HOME": str(setup.root / "home")}
+                          "tool_input": {"command": bash_command}, "cwd": str(setup.project)})
+    label = pathlib.PurePath(argv[1]).name
     try:
         done = subprocess.run(argv, input=payload, capture_output=True, text=True, encoding="utf-8", errors="replace",
-                              timeout=RUN_LIMIT, cwd=str(setup.project), env=env)
+                              timeout=RUN_LIMIT, cwd=str(setup.project), env=minimal_env(setup))
     except subprocess.TimeoutExpired:
-        return {"blocked": False, "rc": None, "note": f"{argv_script.name} did not finish in {RUN_LIMIT} seconds"}
+        return {"blocked": False, "rc": None, "note": f"{label} did not finish in {RUN_LIMIT} seconds"}
     except OSError as exc:
-        return {"blocked": False, "rc": None, "note": f"{argv_script.name} could not run ({type(exc).__name__})"}
+        return {"blocked": False, "rc": None, "note": f"{label} could not run ({type(exc).__name__})"}
     blocked = done.returncode == 2
     if done.returncode == 0:  # the documented JSON form of a block, on exit 0
         try:
@@ -227,27 +328,47 @@ def any_of(results) -> dict:
 def guards(setup: Setup) -> list:
     """Each PreToolUse hook that covers Bash and names a script, exercised on a push to main and a push to domain-fix."""
     found = []
-    for label, event, matcher, command in setup.hooks():
+    for label, event, matcher, command in setup.hooks(active_only=True):  # a disabled entry, or one whose matcher misses Bash, enforces nothing
         if event != "PreToolUse" or not covers_bash(matcher):
             continue
-        scripts = setup.scripts_in(command)
-        runnable = next(((w, p) for w, p in scripts if p is not None and p.is_file()), None)
-        if runnable is None:
-            found.append({"command": command, "script": None, "note": "names no script file that exists, so it cannot be exercised"})
+        plan = plan_command(setup, command)
+        if plan["note"]:
+            found.append({"command": command, "script": None, "note": plan["note"]})
             continue
-        word, path = runnable
-        words = command.replace("\\", "/").split()
-        rest = words[words.index(word) + 1:] if word in words else []
-        main = all_of(run_guard(setup, command, path, rest, c) | {"cmd": c} for c in MUST_BLOCK)
-        other = any_of(run_guard(setup, command, path, rest, c) | {"cmd": c} for c in MUST_PASS)
-        found.append({"command": command, "script": path, "main": main, "other": other, "note": ""})
+        main = all_of(run_guard(setup, plan["argv"], c) | {"cmd": c} for c in MUST_BLOCK)
+        other = any_of(run_guard(setup, plan["argv"], c) | {"cmd": c} for c in MUST_PASS)
+        found.append({"command": command, "script": plan["script"], "main": main, "other": other, "note": ""})
     return found
 
 
-def push_deny(rule: str) -> bool:
-    m = re.fullmatch(r"\s*Bash\((.*)\)\s*", rule)
-    inner = m.group(1) if m else ""
-    return "git push" in inner and ("main" in inner or inner.rstrip().endswith(("*", ":*")))
+def deny_matches(rule: str, command: str) -> bool:
+    """Whether a permissions.deny rule matches a Bash command: `Bash` (all), `Bash(exact)`, `Bash(prefix:*)`, `Bash(a * b)`."""
+    m = re.fullmatch(r"\s*Bash(?:\((.*)\))?\s*", rule, re.S)
+    if not m:
+        return False
+    pattern = m.group(1)
+    if pattern is None:
+        return True
+    pattern = pattern.strip()
+    if pattern.endswith(":*"):
+        return command == pattern[:-2] or command.startswith(pattern[:-2] + " ")
+    if "*" in pattern:
+        return re.fullmatch(".*".join(re.escape(part) for part in pattern.split("*")), command, re.S) is not None
+    return command == pattern
+
+
+def deny_effect(rules: list):
+    """(enforces, note): the deny rules together block every MUST_BLOCK command and none of MUST_PASS. A rule that names
+    one branch or one form does not count: it is judged on the same cases as a guard script."""
+    if not rules:
+        return False, "no deny rule names a push"
+    miss = next((c for c in MUST_BLOCK if not any(deny_matches(r, c) for r in rules)), None)
+    wrong = next((c for c in MUST_PASS if any(deny_matches(r, c) for r in rules)), None)
+    if miss:
+        return False, f"the deny rules let `{miss}` through"
+    if wrong:
+        return False, f"the deny rules also block `{wrong}`"
+    return True, "the deny rules block every push-to-main form tried and let the other branches through"
 
 
 # ---------------------------------------------------------------- the checks
@@ -256,8 +377,8 @@ class Checks:
     def __init__(self, setup: Setup, fresh: pathlib.Path):
         self.s, self.fresh = setup, fresh
         self.guard_list = guards(setup)
-        self.denies = [r for r in setup.deny_rules() if push_deny(r)]
-        self.good = [g for g in self.guard_list if g.get("main") and g["main"]["blocked"] and not g["other"]["blocked"]]
+        self.deny_ok, self.deny_note = deny_effect(setup.deny_rules())
+        self.good =[g for g in self.guard_list if g.get("main") and g["main"]["blocked"] and not g["other"]["blocked"]]
 
     def agent(self, name: str):
         path = self.s.home / "agents" / f"{name}.md"
@@ -268,9 +389,9 @@ class Checks:
         return (frontmatter(self.s.text(path)) if path.is_file() else None), path
 
     def guard_detail(self) -> str:
-        if not self.guard_list:
-            return "no PreToolUse hook covers Bash and no deny rule names a push to main"
         parts = []
+        if not self.guard_list:
+            parts.append("no enabled PreToolUse hook covers Bash")
         for g in self.guard_list:
             if not g["script"]:
                 parts.append(g["note"])
@@ -279,20 +400,22 @@ class Checks:
                 parts.append(f"{g['script'].name} {why}")
             else:
                 parts.append(f"{g['script'].name} also {g['other']['note']}")
+        if self.s.deny_rules() or not self.guard_list:
+            parts.append(self.deny_note)
         return "; ".join(parts)
 
     def d1(self):
         if self.good:
-            return True, f"enforced outside prose: {self.good[0]['script'].name} blocks `{PUSH_MAIN}` and lets `{PUSH_OTHER}` through"
-        if self.denies:
-            return True, f"enforced outside prose: deny rule {self.denies[0]}"
+            return True, f"enforced outside prose: {self.good[0]['script'].name}, run as configured, blocks `{PUSH_MAIN}` and lets `{PUSH_OTHER}` through"
+        if self.deny_ok:
+            return True, f"enforced outside prose: {self.deny_note}"
         return False, "the never-push-to-main rule is enforced only in prose: " + self.guard_detail()
 
     def d2(self):
         if self.good:
             return True, f"{self.good[0]['script'].name} blocks `{PUSH_MAIN}` (exit {self.good[0]['main']['rc']}) and lets `{PUSH_OTHER}` through"
-        if not self.guard_list and self.denies:
-            return True, "the exit-1 guard is no longer wired; a deny rule enforces the rule instead"
+        if not self.guard_list and self.deny_ok:
+            return True, "the exit-1 guard is no longer wired; deny rules enforce the rule instead: " + self.deny_note
         return False, self.guard_detail()
 
     def d3(self):
@@ -356,10 +479,23 @@ class Checks:
         present = [m for m in MONTH_END if m.lower() in text.lower()]
         if len(present) > 2:
             return False, f"CLAUDE.md still carries the month-end procedure ({len(present)} of its {len(MONTH_END)} commands)"
-        moved = next((str(p.relative_to(self.s.root)).replace("\\", "/") for p in self.s.root.rglob("*")
-                      if p.is_file() and p.suffix in (".md", ".sh", ".py") and p.name != "CLAUDE.md"
-                      and sum(m.lower() in self.s.text(p).lower() for m in MONTH_END) >= 4), None)
-        return True, "the month-end steps are out of CLAUDE.md" + (f" and now live in {moved}" if moved else " (removed, not moved: no file holds them)")
+        # the steps must survive where they can be called: in a skill, or in a file CLAUDE.md points to (by path or name, not by @import)
+        claude = self.s.text(self.s.project / "CLAUDE.md").lower()
+        for p in sorted(self.s.root.rglob("*")):
+            if not p.is_file() or p.suffix not in (".md", ".sh", ".py") or p.name == "CLAUDE.md":
+                continue
+            if sum(m.lower() in self.s.text(p).lower() for m in MONTH_END) < 4:
+                continue
+            rel = p.relative_to(self.s.root).as_posix()
+            if p.name == "SKILL.md":
+                fields, _ = frontmatter(self.s.text(p))
+                if fields.get("name") and fields.get("description"):  # a real skill, not a scratch file named SKILL.md
+                    return True, f"the month-end steps are out of CLAUDE.md and now live in the skill {rel}"
+                continue
+            local = p.relative_to(self.s.project).as_posix().lower() if self.s.project in p.parents else None
+            if (local and local in claude) or p.name.lower() in claude:
+                return True, f"the month-end steps are out of CLAUDE.md and now live in {rel}, which CLAUDE.md points to"
+        return False, "the month-end steps left CLAUDE.md but no skill or file CLAUDE.md points to holds them (deleted, or moved where nothing leads to it)"
 
     def d7(self):
         found, _ = self.skill("audit-readonly")
@@ -440,16 +576,25 @@ class Checks:
                 data = re.sub(rb"\d{4}-\d\d-\d\dT[\d:.]+Z", b"T", data)
             return hashlib.sha256(data).hexdigest()
 
-        changed = []
-        for path in sorted(p for p in self.fresh.rglob("*") if p.is_file()):
-            rel = path.relative_to(self.fresh).as_posix()
-            if rel in DEFECT_FILES:
-                continue
-            mine = self.s.root / rel
-            if not mine.is_file() or digest(mine) != digest(path):
-                changed.append(rel)
-        return (not changed, "every file no defect touches is unchanged" if not changed
-                else "changed or removed: " + ", ".join(changed))
+        def inventory(base: pathlib.Path) -> dict:
+            return {p.relative_to(base).as_posix(): p for p in base.rglob("*") if p.is_file() and "__pycache__" not in p.parts}
+
+        fresh, mine = inventory(self.fresh), inventory(self.s.root)
+        changed = [rel for rel, path in sorted(fresh.items())  # a file of the fresh build that is gone or edited, unless a defect lives in it
+                   if rel not in DEFECT_FILES and (rel not in mine or digest(mine[rel]) != digest(path))]
+        claude_md = self.s.text(self.s.project / "CLAUDE.md")
+
+        def pointed_to(rel: str) -> bool:  # D6's target: a project file CLAUDE.md names that holds the month-end steps
+            return (rel.startswith("project/") and rel[len("project/"):].lower() in claude_md.lower()
+                    and sum(m.lower() in self.s.text(mine[rel]).lower() for m in MONTH_END) >= 4)
+
+        added = [rel for rel in sorted(mine)
+                 if rel not in fresh and not rel.startswith(SKILL_DIRS) and not pointed_to(rel)]
+        if not changed and not added:
+            return True, "every file no defect touches is unchanged, and the only new files are skills, hooks or files CLAUDE.md points to"
+        return False, "; ".join(part for part in (
+            "changed or removed: " + ", ".join(changed) if changed else "",
+            "new files that are not skills, hooks or named in CLAUDE.md: " + ", ".join(added) if added else "") if part)
 
 
 def check(root: pathlib.Path):
