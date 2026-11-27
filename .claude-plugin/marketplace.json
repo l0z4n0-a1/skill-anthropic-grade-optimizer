@@ -3,12 +3,12 @@
   "owner": {
     "name": "l0z4n0-a1"
   },
-  "description": "Claude Code skills by l0z4n0-a1.",
+  "description": "Claude Code plugins by l0z4n0-a1. Independent; not affiliated with Anthropic.",
   "plugins": [
     {
       "name": "grade-optimizer",
       "source": "./",
-      "description": "Reviews a Claude Code setup as a system, or one skill, subagent, hook or instruction file in depth."
+      "description": "Reviews a Claude Code setup as a system, one skill, subagent, hook or instruction file in depth, or an orchestration process built on it, with cited sources."
     }
   ]
 }

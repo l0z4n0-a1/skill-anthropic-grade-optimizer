@@ -24,3 +24,4 @@ Thumbs.db
 
 # knowledge-base snapshots are third-party documentation: fetched locally, never committed
 kb/snapshots/
+kb/snapshots-prev/

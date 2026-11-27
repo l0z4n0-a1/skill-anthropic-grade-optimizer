@@ -18,7 +18,7 @@ and state that at the top of what you report. Review a piece that pins a model
 against that model, not the target.
 
 Check that the knowledge base covers the target: `kb.py models`. If the model is missing, the knowledge base
-predates it. Say so, read the model's prompting guide and what's-new page from
+does not cover it, whatever the reason. Say so, read the model's prompting guide and what's-new page from
 the current documentation for this review, and point the person to
 `references/maintaining.md`.
 

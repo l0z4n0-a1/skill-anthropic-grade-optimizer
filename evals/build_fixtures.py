@@ -10,7 +10,13 @@ many does it invent?
 Usage: build_fixtures.py <output dir>
 Writes <output dir>/planted and <output dir>/clean, each with `home/.claude` and
 `project`. Session history is generated with current timestamps so it falls
-inside the measurement window. Nothing here is executed by the review.
+inside the measurement window, so the transcripts carry the time of the build (the other
+files do not depend on it). Nothing here is executed by the review.
+Use a new, empty output directory: the named folders are overwritten file by file, and a
+file left from an earlier build that this one does not write stays in place. A failed
+write raises and exits 1 with a traceback.
+Exit: 0 when both folders were built; 2 when the arguments are not exactly one directory
+(a flag such as --help also gives 2 and prints this text to stderr).
 """
 import datetime as dt
 import json
@@ -247,7 +253,7 @@ with the reason.
 
 
 def main() -> int:
-    if len(sys.argv) != 2:
+    if len(sys.argv) != 2 or sys.argv[1].startswith("-"):
         print(__doc__, file=sys.stderr)
         return 2
     out = pathlib.Path(sys.argv[1])

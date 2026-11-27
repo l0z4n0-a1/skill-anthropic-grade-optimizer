@@ -17,7 +17,9 @@ finding, and probably the most important one, because a model reading it will
 not be able to either.
 
 If the piece is not installed in a setup, `measure.py --piece <path>` gives its
-listing cost, body size and bundled files on its own.
+listing cost, body size and bundled files on its own. It takes a skill folder,
+a `SKILL.md` or a subagent's `.md` file; for any other kind of piece, read the
+file and measure nothing.
 
 Then read the core claims for the kind of piece, and `kb.py core prompting` for
 any piece that is mostly instruction text:
@@ -51,7 +53,8 @@ field out: a default is still a choice, and for tools, model and effort the
 default may be far from what the author intended.
 
 **The description, as routing text.** Whoever picks this piece reads only its
-description, among all the others. Ask what request it should win, whether the
+name and description (and `when_to_use`, where the piece has one), among all
+the others. Ask what request it should win, whether the
 description would win it, and whether it would also win requests it should lose.
 A good description says what the piece does and when to use it, in the words a
 request would use, and where a sibling is close, says which case goes where.

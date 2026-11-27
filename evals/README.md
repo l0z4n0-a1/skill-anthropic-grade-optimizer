@@ -6,8 +6,8 @@ not report ones that are not. These files measure both.
 ## What is here
 
 - `build_fixtures.py` writes two throwaway Claude Code setups into a directory
-  you name. `planted` has ten defects, each a specific mistake that Anthropic's
-  documentation says is one. `clean` is a small setup with nothing wrong that
+  you name. `planted` has ten defects, each a specific mistake that a cited
+  claim says is one. `clean` is a small setup built to have nothing wrong that
   matters.
 - `ANSWER-KEY.md` lists the ten defects with the claims behind each, what in
   `planted` is deliberately sound, and how to score a run.
@@ -15,21 +15,40 @@ not report ones that are not. These files measure both.
 ## Running it
 
 ```bash
-python evals/build_fixtures.py /tmp/calibration
+python evals/build_fixtures.py <new empty directory>
 ```
 
-Then, in a fresh Claude Code session with this skill installed, once for each
+Use a fresh directory under your system's temporary folder (`/tmp/...`,
+`%TEMP%\...`) each time: the builder overwrites `planted` and `clean` inside
+the directory it is given. It takes that one argument and no options, and
+exits 0 when the fixtures were written and 2 on anything else.
+
+Then, in a fresh Claude Code session with the plugin loaded, once for each
 setup:
 
 ```
 Review the Claude Code setup whose user-level directory is
-/tmp/calibration/planted/home/.claude and whose project is
-/tmp/calibration/planted/project. Do not change anything in it.
+<directory>/planted/home/.claude and whose project is
+<directory>/planted/project. Do not change anything in it.
 ```
 
-The session must not be able to see `ANSWER-KEY.md` or `build_fixtures.py`: run
-it from a directory outside this repository and give it only the built paths.
-Score each report against the key. A run produces three numbers: defects found
+The reviewer must not be able to read `ANSWER-KEY.md` or the builders. Starting
+the session elsewhere is not enough, because the loaded plugin's own directory
+holds them, and a copied checkout keeps them in its git history. Export the
+plugin without git metadata and without `evals/`:
+
+```bash
+mkdir <copy>
+git archive HEAD -- . ':!evals' | tar -x -C <copy>
+```
+
+Load that copy with `claude --plugin-dir <copy>` and start the session in a
+directory that is neither the copy nor this repository. The reviewer can
+still read anything on the machine its permissions allow, this repository
+included; deny reads of it in the session's permissions (`Read(<this repo>/**)`
+under `deny`) or run the round from a machine or user without it. Record with each
+result: the commit the copy was made from, the exact model id, and how it was
+scored. Score each report against the key. A run produces three numbers: defects found
 out of ten on `planted`, false findings on `planted`, and findings presented as
 significant on `clean`.
 
@@ -62,3 +81,48 @@ of the setup and labelled as judgment (the main session's context size; trying a
 smaller default model). Those are not counted as false. The three defects the
 smaller model missed are all found by reading a piece's body closely, which is
 the last of the review's questions and the first to be cut short.
+
+## Process calibration
+
+`references/process-review.md` has its own pair of fixtures. `python evals/build_process_fixtures.py
+<new empty directory>` writes `process-planted` (ten defects, four things that are sound) and
+`process-clean`, each a small orchestration process with a README, a runner, a gate and the records
+of 50-odd past runs; the records come from a seeded generator, so the counts in the last section of
+`ANSWER-KEY.md` are exact and the build is identical every time. Run it as above, once per fixture,
+with the same reviewer copy and from a directory outside it, with a request such as "Review the
+orchestration process in <directory>/process-planted. Do not run or change anything in it." Score against the
+key: defects found out of ten on `process-planted`, false findings on `process-planted`, and
+false findings on `process-clean`. The same caveat holds: one run is one sample. On `process-clean`
+the target is 0 false findings, not 0 findings. Two kinds of error are counted, in separate columns:
+a finding that does not hold against the code or the records (false), and a finding that presents as a
+defect a cost the key lists as a residue of a sound process (residue as defect). The target is 0 in
+both; the table shows rounds 2 and 4 missed it on the second. A
+true finding the key does not know, that the owner of the process would change, is a defect of the
+fixture: fix it in the builder and recompute the counts in the key; if the owner would not change it,
+add it to the key's residues.
+
+Five blind rounds on the process guide, all on 2026-11-27, each with a reviewer that did not see the
+key (the reports name `claude-sonnet-5-5`). Rounds 1 and 2 are scored from the coordinator's counts;
+round 3 was scored against the key by recounting the claims on the built records; rounds 4 and 5
+were scored against the key from the reports, without recounting.
+
+| Round | Found on `process-planted` | False on `process-planted` | `process-clean`: false | `process-clean`: new, true and fixed | `process-clean`: true but a residue, presented as a defect |
+|---|---|---|---|---|---|
+| 1 | 8 of 8 (the fixture then had 8 defects) | 0 | 1 of the 8 presented was not true | 7 (6 fixed; the unmeasured reviewer kept as a residue) | not split |
+| 2 | 10 of 10 | 0 | 0 | 1 | 3 |
+| 3 | 9 of 10 (P10 missed; P4's third part, the report in the reviewer's prompt, also not named) | 0, and 1 wrong aside (`unittest discover` with no tests exits 0; on Python 3.12 it exits 5) | 0 | 3, fixed (`scope` blind to added records and files; baseline and checks not sealed; per-stage tokens, dead reason and timeouts missing, in part: no verdict files before October and no release record stay residues) | 1 (the reviewer never measured) |
+| 4 | 8 of 10 (P1 and P10 missed) | 1 (the second reviewer reported as unproven, which the key lists as sound) | 0 | 1, not fixed: value criteria a script could decide (order, uniqueness, date format) are left to the reviewer; listed as open in the key | 2 (the reviewer's count-and-first-id feedback; an executor that fills values instead of stopping) |
+| 5 (planted only, guide revised after round 4) | 9 of 10 (P1 named from the code without the count the key requires; P10 scored on the code path, its 2 rounds in the records not found) | 0 | not run | not run | not run |
+
+Round 4 ran after `process-review.md` and `foundations.md` were revised in answer to an outside
+critique, and it scored below round 3. The false finding traced to a sentence that revision had
+tightened: a second reviewer was to be justified against "the first one tuned", which no record can
+show, so any second reviewer became reportable. The sentence now says what evidence in the records
+settles it. Two general questions were also added (runs stopped early for no progress; a reviewer
+that fails without judging). Those edits were made knowing what round 4 missed, so a later round on
+this fixture is not an independent measure of them; a fixture the guide's author has not seen is.
+
+Rounds 1 and 2 led to changes in the fixture and in the guide, so the rows are not repeated measures
+of the same object: the `process-clean` of round 3 is not the one of round 1, and the guide was
+rewritten between rounds 2 and 3 to separate a defect from a cost, which is why the costs of round 2
+that were overstated came back as costs in round 3. Read the rows as a sequence, not as a trend.

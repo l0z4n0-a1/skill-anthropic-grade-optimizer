@@ -181,5 +181,24 @@
       "prompting-065",
       "evals-003"
     ]
+  },
+  "process": {
+    "principle": "A stage in an orchestration process earns its place by buying context isolation, parallel work, an independent judgment or a deterministic check, and its own run records are the evidence for whether it does. A review loop needs criteria the judged work cannot edit, a cap and a measure of rounds-to-pass, and a way to tell a defect in the work from a criterion that does not apply; every stage is an assumption about the model, retested by scoring the same tasks with and without it.",
+    "claims": [
+      "longrun-038",
+      "longrun-042",
+      "longrun-013",
+      "longrun-071",
+      "longrun-001",
+      "longrun-021",
+      "verif-003",
+      "verif-004",
+      "verif-012",
+      "verif-019",
+      "verif-001",
+      "verif-005",
+      "plat-052",
+      "coord-025"
+    ]
   }
 }

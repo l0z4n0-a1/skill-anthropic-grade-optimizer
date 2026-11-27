@@ -1,7 +1,13 @@
 {
   "name": "grade-optimizer",
-  "version": "2.0.0",
-  "description": "Reviews a Claude Code setup as a system, or one skill, subagent, hook or instruction file in depth.",
+  "version": "2.1.0",
+  "description": "Reviews a Claude Code setup as a system, one skill, subagent, hook or instruction file in depth, or an orchestration process built on it, with cited sources. Independent project; not affiliated with Anthropic.",
+  "author": {
+    "name": "l0z4n0-a1",
+    "url": "https://github.com/l0z4n0-a1"
+  },
+  "homepage": "https://github.com/l0z4n0-a1/skill-anthropic-grade-optimizer",
+  "repository": "https://github.com/l0z4n0-a1/skill-anthropic-grade-optimizer",
   "license": "MIT",
-  "repository": "https://github.com/l0z4n0-a1/skill-anthropic-grade-optimizer"
+  "keywords": ["review", "audit", "context", "skills", "subagents", "hooks"]
 }
