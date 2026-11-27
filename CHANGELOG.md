@@ -2,9 +2,52 @@
 
 All notable changes to grade-optimizer follow [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and adhere to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [2.2.0] - 2026-11-27 - From reviewer to upgrade
+
+Version 2.1 told you what to change. This release makes the changes with you,
+shows where the setup stands against the published guidance, and looks for
+what the setup leaves unused.
 
 ### Added
+- `/grade-optimizer:upgrade` (`commands/upgrade.md`): review, a plan of exact
+  edits with scope, cost and source, the person's pick, a backup of every file
+  touched, one edit at a time with its check, then a second measurement and the
+  board before and after. User-invoked only. Unattended runs apply only with an
+  explicit "apply all", and deletions or user-level changes only when the
+  request names them.
+- The standard board at the top of every setup report: per question, meets
+  (and what was checked), gap (which findings) or not checked. No total score.
+- Question 7 and `references/capabilities.md`: 25 Claude Code capabilities,
+  each with what it buys, the signal in a setup that it would pay off, when it
+  does not fit, and the claims behind it. An unused capability is never a
+  finding by itself. Includes five documented facts that contradict common
+  belief.
+- `scripts/backup.py`: save, record (per file, right after each edit), status
+  and restore. Restore checks every file before it replaces any, replaces
+  each one atomically, refuses to overwrite edits made after the upgrade, and
+  can be run again to finish one that stopped part-way. The backup carries
+  its own copy of the script, so the restore command survives a plugin update.
+- `scripts/settings_edit.py`: changes hooks, permission rules and allowlisted
+  settings keys without the model reading the settings file; prints only the
+  changed region, with hook commands masked to program and script name;
+  `--dry-run` prints the file's hash and `--expect-sha256` refuses a file
+  changed since; `--index` picks one of several matching hooks; refuses hook
+  events Claude Code does not document, a file that cannot be rewritten
+  without changing a value, and a path that leads through a link.
+- Hook commands and long or secret-looking permission rules are masked in
+  `measure.py` output as well, so a credential written into a hook never
+  reaches the model.
+- `measure.py`: a `features` block (what is configured, from records it
+  already reads). `schema_version` unchanged, since the block only adds keys.
+- `evals/check_upgrade.py`: a deterministic oracle for an upgraded `planted`
+  setup, and the upgrade calibration in `evals/README.md`.
+
+### Changed
+- Positioning: the README, banner, manifests and skill description lead with
+  the outcome, a setup brought in line with the published guidance; the quote is the
+  reason to trust a change.
+
+### Docs (also since 2.1.0)
 - `docs/architecture.md`: components, trust boundaries, the claim lifecycle,
   design decisions, extension points and a glossary.
 - `docs/example-report.md`: an unedited review of the `planted` calibration

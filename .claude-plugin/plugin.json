@@ -1,7 +1,7 @@
 {
   "name": "grade-optimizer",
-  "version": "2.1.0",
-  "description": "Reviews a Claude Code setup as a system, one skill, subagent, hook or instruction file in depth, or an orchestration process built on it, with cited sources. Independent project; not affiliated with Anthropic.",
+  "version": "2.2.0",
+  "description": "Brings a Claude Code setup in line with Anthropic's published guidance, as an independent review: measures it, reviews it as a system, shows what it leaves unused, and applies the changes you approve, each with its source quoted. Independent project; not affiliated with Anthropic.",
   "author": {
     "name": "l0z4n0-a1",
     "url": "https://github.com/l0z4n0-a1"

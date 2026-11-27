@@ -362,7 +362,7 @@ class ThirdReviewTest(unittest.TestCase):
                 "permissions": {"deny": ["Bash(git push origin main)", 7], "allow": ["Read"]}}))
             files = measure.build(home, project, 0)["settings"]["files"][0]
             self.assertEqual(files["skillOverrides"], {"a": "off", "b": "(other)"})
-            self.assertEqual(files["permission_rules"], {"deny": ["Bash(git push origin main)"], "allow": ["Read"]})
+            self.assertEqual(files["permission_rules"], {"deny": ["Bash(git push origin main)"], "allow": ["Read"]})  # a short plain rule is shown whole
 
     def test_history_edges(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -18,7 +18,11 @@ claude -p "/grade-optimizer:grade-optimizer Review the Claude Code setup whose u
 Scored against the key, this run found all ten planted defects (D1 to D10)
 and each of its nine findings corresponds to one of them, so none is false by
 the key. Every claim id it cites exists in the knowledge base. The figures
-and asides inside the findings were not checked one by one. One run is one sample; [evals/README.md](../evals/README.md)
+and asides inside the findings were not checked one by one, and one citation
+is wrong: finding 5 cites skills-802 for `disable-model-invocation`, but that
+claim's quote is about where a procedure loads (finding 9 uses it correctly);
+the claim for the flag is skills-009. It is left as the reviewer wrote it,
+because this page shows what a run returns, slips included. One run is one sample; [evals/README.md](../evals/README.md)
 has the rounds and how they are scored. Only local paths were replaced
 (`<project>`, `<fixture>`, `<tmp>`); the text is otherwise as the reviewer
 wrote it, including its phrasing slips.

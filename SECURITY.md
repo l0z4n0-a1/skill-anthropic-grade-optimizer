@@ -76,8 +76,60 @@ follows redirects only within that URL's host.
 **`kb.py` and `kb_gate.py`** read the repository's own `kb/` directory and
 nothing else.
 
-No script executes anything from the setup under review. Hooks, skills and
-agents are read as text.
+**`backup.py` reads and writes the files you name, and nothing else.** `save`
+copies them into a backup folder (default `~/.grade-optimizer-backups`, outside
+`~/.claude` and any project); `restore` writes them back. The copies can hold
+secrets from your settings files: the folders and files are created readable by
+the current user only where the system supports that, and on Windows they take
+the permissions of their folder (the script does not set an ACL there, and a
+file it writes back takes its folder's inherited rules, not any per-file ACL
+the original had). Each backup also holds a copy of `backup.py`, so a restore
+does not depend on the plugin staying installed. `restore` is atomic per file,
+not across files: it checks every file first and refuses the whole run if a
+path now resolves somewhere other than where it was recorded (a parent folder
+turned into a symlink or junction) or a file changed since the edit, but if a
+write then fails on one file the others are still restored and the exit is 1;
+running it again finishes the job. It prints no file contents and has no
+network code.
+
+What these scripts do not defend against, by design: another program writing
+the same file in the instant between a check and the write that follows it.
+`settings_edit.py --expect-sha256` and the restore's change check narrow that
+window to the time of one write; they do not lock the file. Run an upgrade or
+a restore with no other Claude Code session editing the same setup. A settings
+file is rewritten as JSON with its values intact, but numbers are written in
+their shortest exact form (`1.50` becomes `1.5`) and indentation is
+normalized; a file that cannot be rewritten without changing a value
+(duplicate keys, numbers out of range) is refused.
+
+**`settings_edit.py` reads and writes the one settings file you name, and nothing
+else.** It makes six kinds of edit (hooks, permission rules, a few plain
+settings) and prints only the part it changed, so the rest of the file, which
+can hold secrets, is never shown. A hook command or permission rule is never
+printed beyond one rule: for a hook command, the program name and the base name
+of the first script-like argument, then `…`, never the rest of the command,
+quoted or not. A permission rule keeps its tool name and a short plain
+specifier, and otherwise the tool name and two words; a rule is judged by shape,
+not by a search for credentials, so a short bare secret in its first two words
+would be shown. `measure.py` applies the same rules to the hook commands and
+permission rules in its JSON. It prints the canonical path it will write and the
+file's sha256, and `--expect-sha256` makes a write refuse if the file changed
+since a dry run. It refuses a path that goes through a symlink or junction
+unless `--follow-links`, and refuses, without echoing, a file that is not valid
+JSON or cannot be written back unchanged (repeated keys, numbers out of range,
+`NaN`). It writes atomically and has no network code.
+
+**`check_upgrade.py` executes the guard scripts of the fixture it checks**, in a
+temporary copy, with a 10-second limit and a minimal environment (no inherited
+credentials). It never uses a shell: it splits the configured command with
+`shlex`, expands only `~`, `$HOME` and `$CLAUDE_PROJECT_DIR` to the copy's paths,
+runs only `python`, `python3` or `py` (replaced by its own interpreter)
+on a script whose resolved path is inside that copy, and reports anything else
+as `not exercised`. It is still the setup's own code running as you: point it at
+a fixture you built.
+
+Apart from `check_upgrade.py` on a fixture, no script executes anything from
+the setup under review. Hooks, skills and agents are read as text.
 
 ## Reviewing a setup you did not write
 

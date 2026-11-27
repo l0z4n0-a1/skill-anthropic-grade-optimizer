@@ -1,10 +1,10 @@
 <p align="center">
-  <img src="docs/assets/banner.svg" alt="grade-optimizer: measure, read, cite. A Claude Code plugin." width="100%">
+  <img src="docs/assets/banner.svg" alt="grade-optimizer: brings your Claude Code setup in line with the published guidance." width="100%">
 </p>
 
 <p align="center">
   <a href="https://github.com/l0z4n0-a1/skill-anthropic-grade-optimizer/actions/workflows/ci.yml"><img src="https://github.com/l0z4n0-a1/skill-anthropic-grade-optimizer/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <img src="https://img.shields.io/badge/version-2.1.0-30D990?labelColor=0a0a0a" alt="version 2.1.0">
+  <img src="https://img.shields.io/badge/version-2.2.0-30D990?labelColor=0a0a0a" alt="version 2.2.0">
   <img src="https://img.shields.io/badge/claims-1%2C569%20quoted-30D990?labelColor=0a0a0a" alt="1,569 quoted claims">
   <img src="https://img.shields.io/badge/python-3.9%2B%20stdlib%20only-9B70FF?labelColor=0a0a0a" alt="Python 3.9+, standard library only">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-c4d4ca?labelColor=0a0a0a" alt="MIT license"></a>
@@ -23,20 +23,28 @@
 
 # grade-optimizer
 
-A Claude Code plugin that reviews how you have set Claude Code up. It measures
-what your setup loads, what that costs and what actually gets used, then reads
-the setup the way a careful colleague would and tells you what to change, with
-the published source for each recommendation quoted beside it.
+A Claude Code plugin that brings your setup in line with what Anthropic's
+published documentation recommends. It is an independent review, not an
+Anthropic benchmark. It measures what your setup loads, what that costs and
+what actually gets used; reads it the way a senior engineer who has studied
+that documentation would; shows where it stands, what holds it back and what
+Claude Code offers that it is not using; and, when you ask, makes the changes
+with you and measures again to show what moved.
+
+Every change comes with the published source quoted beside it. The quote is
+there so you can trust the change without trusting the reviewer; the better
+setup is the point.
 
 It is an independent project. It is not affiliated with, endorsed by or
 sponsored by Anthropic. See [NOTICE.md](NOTICE.md).
 
 ```
-  measure                read                    report
-  ───────                ────                    ──────
-  what loads             the setup as a system   what to change, largest first
-  what it costs    ──▶   against 1,569 quoted ──▶ the source quoted beside it
-  what gets used         claims                  how to tell it worked
+  measure              review                    upgrade (when you ask)
+  ───────              ──────                    ──────────────────────
+  what loads           where it stands, per      each change as the exact edit
+  what it costs  ──▶   question, against   ──▶   you approve; backup first;
+  what gets used       1,569 quoted claims;      measured again, before/after
+                       what it leaves unused
 ```
 
 ## What it reviews
@@ -47,10 +55,12 @@ sponsored by Anthropic. See [NOTICE.md](NOTICE.md).
 | "Review the skill at `<path>`" (or a subagent, hook or instruction file) | Reads one piece in depth: will it be picked when it should, and will it produce good work | [piece-review.md](references/piece-review.md) |
 | "Fit my setup to `<model id>`" | Says what to change, remove and add when the model reading the setup changes | [model-fit.md](references/model-fit.md) |
 | "Review the process in `<dir>`; its run records are in `<dir>`" | Reads an orchestration process built on Claude Code (a runner, a workflow, a review loop) against its own run records: what it guarantees, what its checks can and cannot catch, where it spends | [process-review.md](references/process-review.md) |
+| `/grade-optimizer:upgrade` | Reviews the setup, then applies the changes you approve, one exact edit at a time, after backing up every file it touches; measures again and shows the board before and after | [commands/upgrade.md](commands/upgrade.md) |
 | `/grade-optimizer:update` | Checks whether the published sources changed since the knowledge base was built, and which claims that puts in doubt | [commands/update.md](commands/update.md) |
 
-A review changes nothing unless you ask it to. A setup with
-little wrong gets a short report that says so.
+A review changes nothing; only `/grade-optimizer:upgrade` edits, and only what
+you approve. A setup with little wrong gets a short report that says so, and an
+upgrade with nothing worth changing stops there.
 
 Claude Code ships checks of its own, and this plugin builds on them instead of
 repeating them: `/doctor` for installation health, `/doctor prompt-audit` for
@@ -167,7 +177,7 @@ in your shell when you want a new version. [CHANGELOG.md](CHANGELOG.md) lists
 each release.
 
 Before installing any plugin, read what it runs. This one has no hooks, no MCP
-server and no background process; it has five scripts, described under
+server and no background process; it has seven scripts, described under
 [What the scripts touch](SECURITY.md#what-the-scripts-touch).
 
 ## First review
@@ -333,7 +343,10 @@ Stated with its base, because a rate without one is decoration.
 - **Fidelity.** Two readers from different model families independently read
   the same random sample of 60 claims. 49 drew no objection from either; the
   other 11 omitted a condition or overstated scope and were corrected. One
-  reader alone had passed all 60. The sample says nothing certain about the
+  reader alone had passed all 60. Building the 2.2 capabilities guide, a
+  third reading found two more claims (harness-036, context-019) whose summary
+  says more than their quote. Both are in the core reads, so the rule above
+is what protects a review from them; they are queued for the next update. The sample says nothing certain about the
   claims outside it, which is why the skill has the reviewer read the quote,
   not the summary, before a finding rests on a claim.
 - **Reviews.** `evals/` builds throwaway setups and processes with planted
@@ -343,6 +356,16 @@ Stated with its base, because a rate without one is decoration.
   finding and rounds 2 to 4 none, but in two of those rounds the reviewer presented 2 or 3 known, acceptable costs as
   defects. [evals/README.md](evals/README.md) has every round, including the
   one that got worse and why.
+- **Upgrades.** Four unattended `/grade-optimizer:upgrade` runs on the
+  planted setup, all scored by the same deterministic oracle on the edited
+  files, fixed 6, 6, 6 and 8 of 10 defects as the guides changed between
+  runs. Of the two left in the last run, one was held with a question by
+  design and one was a judgment call that went the wrong way. No run lost a
+  sound rule or edited another file of the setup, and on the clean setup all
+  four made no edit. Two earlier runs rewrote the push guard with a bypass in
+  it; after the last run a blind review found the guard sound and no defect
+  the upgrade introduced. Small sample, one model:
+  [evals/README.md](evals/README.md#upgrade-calibration).
 
 ## Limits
 
@@ -351,7 +374,7 @@ Stated with its base, because a rate without one is decoration.
 - Usage figures come from the session history on this machine. Claude Code
   deletes session files older than `cleanupPeriodDays`, 30 days by default.
 - The knowledge base is as current as the release that last reviewed it; for
-  2.1.0 that was 2026-11-27, and `kb/snapshots.lock.json` dates each source. A
+  2.2.0 that was 2026-11-27, and `kb/snapshots.lock.json` dates each source. A
   model released after that is not covered, and the review says so.
 - The calibration fixtures were written by the maintainer, who also wrote the
   guides. A process the maintainer has never seen is the independent test, and

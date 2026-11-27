@@ -2,7 +2,7 @@
 
 How grade-optimizer is built: its parts, what each is responsible for, what crosses between them, what is trusted, and
 why the main choices were made. For an engineer deciding whether to trust the plugin or contribute to it. It describes
-version 2.1.0 on the `docs-architecture` branch.
+version 2.2.0.
 
 Every statement comes from the repository's files (README, `SKILL.md`, [reference.md](reference.md),
 [SECURITY.md](../SECURITY.md), [NOTICE.md](../NOTICE.md), [CONTRIBUTING.md](../CONTRIBUTING.md), the changelog, the
@@ -41,6 +41,8 @@ flowchart TB
         GATE["scripts/kb_gate.py"]
         FETCH["scripts/kb_fetch.py"]
         UPDATE["scripts/kb_update.py"]
+        BACKUP["scripts/backup.py"]
+        SETEDIT["scripts/settings_edit.py"]
         CMD["commands/update.md"]
         subgraph KB["kb/"]
             CLAIMS["claims/*.jsonl<br/>sources.json<br/>core.json, harness.json"]
@@ -50,7 +52,7 @@ flowchart TB
         end
     end
 
-    EVALS["evals/<br/>fixture builders, answer keys"]
+    EVALS["evals/<br/>fixture builders, answer keys,<br/>upgrade oracle"]
     P -->|"asks for a review"| MODEL
     SKILL -->|"which guide, which commands"| MODEL
     SETUP --> MEASURE
@@ -173,6 +175,25 @@ pending items normally give 3, "there is work"; 4 is "nothing changed was seen b
 "a read failed and nothing could be compared"; 2 is misuse or an unsafe place to apply. The 0/4 split exists so an
 incomplete check is never reported as "up to date".
 
+### scripts/backup.py
+
+Keeps the originals of the files an upgrade edits, so the person can undo it. `save` copies each named file (an absent
+one is recorded as absent) into a new timestamped folder under a private store, default `~/.grade-optimizer-backups`,
+with a manifest of hashes, sizes and modes; `record` adds the hash of each file after the edits; `restore` puts the
+originals back with an atomic replace and deletes files that did not exist; `status` says per file whether it is
+original, edited, changed since or missing ([reference.md](reference.md#27-scriptsbackuppy)). It prints no file contents
+and has no network code. Failure: `restore` refuses, exit 2 and nothing touched, when a file is neither the original
+nor the recorded post-edit content, unless `--force`; 1 for an I/O error or a damaged copy.
+
+### scripts/settings_edit.py
+
+Edits a settings file without anyone reading it, because a settings file can hold secrets and a model that opens one
+sees them. Six operations only: add a hook, remove one, set a hook's `onFailure` or timeout, add or remove a permission
+rule, and set a key from the allowlist `measure.py` already exposes ([reference.md](reference.md#29-scriptssettings_editpy)).
+It prints only the region it changed, writes atomically, keeps the rest of the JSON and the file's style, and has no
+network code. Failure: exit 2 for a file that is missing, not valid JSON or in a shape it does not edit, for a hook
+match of zero or several, and for a key outside the allowlist; 1 if the write fails.
+
 ### commands/update.md
 
 The update loop as numbered instructions for a session, `/grade-optimizer:update`. Its frontmatter sets
@@ -183,12 +204,23 @@ the default branch and pushing nothing. It separates steps "the script does and 
 must be reported with evidence, and stops to ask before deleting more than 10 claims at once, removing any source, or
 changing the evals' answer key. Failure: an installed copy stops after the check.
 
+### commands/upgrade.md
+
+`/grade-optimizer:upgrade`, also user-invoked only. It runs the setup review, turns findings and fitting capabilities
+into a numbered plan of exact edits (each with scope, cost, basis and the check that will confirm it), applies only
+what the person picks, after `backup.py save`, one edit at a time with the Edit and Write tools so Claude Code's own
+per-edit approval applies, and settings changes only through `settings_edit.py`. It then runs `measure.py --compare`
+against the saved baseline and reports the board before and after, what was held and why, and what only a live
+session can confirm. In: the request, the setup. Out: edited files, a backup with a restore command, a report.
+Failure: a change that fails its check stops the run before the next one.
+
 ### evals/
 
 Measures the review itself. `build_fixtures.py` builds a setup with ten planted defects and a clean one;
 `build_process_fixtures.py` does the same for processes, with seeded run records so the key's counts are exact
 ([reference.md](reference.md#26-evalsbuild_fixturespy-and-evalsbuild_process_fixturespy)). Neither uses the network or
-`kb/`, and a review never executes what they write. A run is scored by hand against `ANSWER-KEY.md`;
+`kb/`, and a review never executes what they write. `check_upgrade.py` is the oracle for `planted` after an upgrade: one
+check per defect and per sound thing, exit 0 only when all pass ([reference.md](reference.md#28-evalscheck_upgradepy)). A run is scored by hand against `ANSWER-KEY.md`;
 [evals/README.md](../evals/README.md) holds the rounds. Failure: it gates nothing, and CI runs no review.
 
 ### Tests and CI
@@ -324,7 +356,7 @@ the files do not discuss that.
 
 The scripts require no third-party Python packages: the README says "nothing to install", SECURITY.md says no dependency
 outside the standard library, and CONTRIBUTING.md says `measure.py` stays standard library only with no network call.
-Inference: the effect is an empty install step and a code surface of five scripts, which suits the README's advice to
+Inference: the effect is an empty install step and a code surface of seven scripts, which suits the README's advice to
 read what a plugin runs before installing; no file states the maintainer's reason or names a rejected library.
 
 ### The API and claude.ai are not supported
@@ -349,6 +381,23 @@ Why: it must run from an installed, read-only copy, whose edits the next update 
 clone (`.git`, writable `kb/`, not under a plugin cache). The `/update evolve` workflow adds a new branch and no push,
 because extraction writes draft claims into `kb/claims/`, which every review reads (`commands/update.md`). Rejected:
 updating in place. Cost: draft claims reaching a live review, or edits lost.
+
+### The upgrade edits with the person's approval, not through its own writer
+
+Why: approval has to bind to the exact edit. The command makes the person's pick of exact edits the approval, and
+does not count on a tool prompt, which depends on the permission mode (in auto mode Claude Code may apply an edit
+without asking, settings-023). It adds a backup taken first, a record after each edit and a check after each one.
+Settings files are the exception, because the model must not read them; `settings_edit.py` applies narrow operations
+and prints only the changed region. Rejected: a separate writer that applies a pre-approved, hashed diff, which
+reviewers proposed; in interactive use it adds machinery without a stronger guarantee. Cost: in an unattended run
+nobody approves each edit, so that mode applies deletions and user-level changes only when the request names them.
+
+### The board has no total
+
+Why: the questions are not equal, an allocation row rests on judgment, and the piece-quality row is a sample, so a
+count of rows that "meet" would read as a compliance score the review cannot back. Rejected: "N of 7 meet the
+standard", from the first plan, dropped after review. Cost: no single number to track; the findings and the
+before-and-after measurement carry the change instead.
 
 ## Extension points
 

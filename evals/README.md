@@ -66,10 +66,80 @@ Each row is a single run, scored by hand against the key.
 | 2026-11-15 | 2.0.0 | Claude Haiku 5.5 | 7 of 10 (missed D4, D7, D8) | 0 | not run |
 | 2026-11-15 | 2.0.0 | Claude Opus 5.5 | not run | not run | 1, again a real defect in the fixture (second entry in the answer key); fixture changed again |
 
-The `clean` setup as it stands now has not been reviewed yet, so there is still
-no recorded run in which a setup with nothing wrong produced no significant
-finding. Both attempts at writing one contained a real problem, and the review
-found it each time.
+| 2026-11-27 | 2.1.0 | Claude Sonnet 5.5 | 10 of 10 | 0 | not run |
+| 2026-11-27 | 2.2.0 | Claude Sonnet 5.5 | (upgrade runs, below) | | 0 in 3 runs |
+
+The 2.1.0 row is the run published unedited in
+[docs/example-report.md](../docs/example-report.md). The 2.2.0 `clean` figure
+comes from the three upgrade runs below: each began with a full review of the
+current `clean` setup, found nothing worth changing and stopped without an
+edit. That is the first recorded result on `clean` with no significant
+finding. Both earlier attempts at writing it contained a real problem, and the
+review found it each time.
+
+## Upgrade calibration
+
+`/grade-optimizer:upgrade` runs unattended on a fresh `planted` copy, with
+"apply all, including deletions and user-level changes", from a plugin copy
+without `evals/` or `tests/`. Then three checks, none of them the upgrader's
+own word:
+
+- `python evals/check_upgrade.py <dir>/planted`: a deterministic oracle, one
+  check per defect, run on the edited files. It exercises the guard with
+  five commands (three pushes to main it must block, two branches containing
+  the word it must let through) and checks the rest by structure. On a fresh
+  build every defect reads "not fixed"; on a hand-fixed copy in its tests,
+  every one reads "fixed". It also checks that what the key lists as sound
+  survives, and that every file no defect touches is unchanged.
+- A blind review of the result in a new session, which sees only the edited
+  setup, to catch what the upgrade broke or only half fixed.
+- The same upgrade on a fresh `clean` copy, where the right result is no edit.
+
+All runs: 2026-11-27, Claude Sonnet 5.5. Every row is scored by the oracle as
+released in 2.2.0, re-run on each run's edited files, so the four rows use
+the same measure. That oracle is stricter than the one used while the runs
+were made: it tests six forms of a push to main, so the guard run 3 wrote,
+which had passed, now fails on `git push --signed origin main`.
+
+| Run | Guides | Fixed (oracle) | Not fixed, and why | Sound kept | Other setup files edited | Written outside the setup, besides the backup and measurements | Edits on `clean` |
+|---|---|---|---|---|---|---|---|
+| 1 | first draft | 6 of 10 | D1, D2: the rewritten guard let `git -C . push origin main` through. D4, D9: held, with a question | 5 of 5 | 0 | none | 0 |
+| 2 | + test guards like a bypasser; read the capabilities guide | 6 of 10 | D6: judged not worth its risk. D10: moved max to high, still the top tier. D4, D9: held | 5 of 5 | 0 | a scratch `test_guard.py` | 0 |
+| 3 | + `settings_edit.py` | 6 of 10 | D1, D2: the rewritten guard let `git push --signed origin main` through. D4, D9: held | 5 of 5 | 0 | a scratch `test_guard.py`; it also parsed the fixture's settings file with Python | 0 |
+| 4 | + smallest guard, block when unsure; approval from the person's pick; record after each edit; scratch files to the temp directory | 8 of 10 | D4: held, with a question. D6: judged a small token saving, not worth the move | 5 of 5 | 0 | none | 0 |
+
+"Written outside" comes from the Edit and Write calls in each run's
+transcript plus the Bash commands that name a settings file; a write made
+inside a script the run executed would not show there. Every run also wrote
+its backup to the backup folder and its measurements to a temporary folder,
+which is what the command asks for.
+
+D4 was held in every run, with the question that blocks it: what `helper` is
+for. Rewriting a description without knowing the agent's job is the guess the
+command is told not to make, so it counts as not fixed but is the behavior
+wanted. D9 was held for the same reason in runs 1 to 3 (was the script removed
+on purpose?); run 4, told deletions were included, removed the dead hook.
+
+D6 in run 4 is a judgment call that went the wrong way. The upgrade weighed
+moving the month-end procedure out of CLAUDE.md as a token saving and left it;
+the blind review that followed called it the most important gap, because it
+is a procedure with side effects that every session loads and the model can
+start. The guides were not changed to win this case, since tuning them to one
+fixture is how a calibration stops measuring anything.
+
+What the blind reviews found after each run. No run lost a sound rule or broke
+a working piece. Runs 1 and 3 left a guard with a bypass, found by the review
+and by the oracle. After run 4 the review called the guard well built and
+found no defect the upgrade introduced. The reviews also kept raising what an
+upgrade cannot settle alone: two staging procedures that may differ on
+purpose, a hook that protects one machine where the rule is the project's,
+branch protection on the server.
+
+Four runs on one model are a small sample, and the guides changed between
+them; read the rows as results for those drafts of the guides. Run 4 is the
+released command, before the last release-review fixes, which changed the
+scripts (secret masking, `--index`, hash check on settings writes) and not the
+command's steps.
 
 The model-fit job was run once, blind, on `planted` (Claude Opus 5.5, moving a
 setup from Opus 5.5 to Sonnet 5.5). It produced the three lists the guide asks
