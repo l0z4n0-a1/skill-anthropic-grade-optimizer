@@ -214,7 +214,9 @@ claude -p "/grade-optimizer:grade-optimizer review this setup and write the repo
 starts the project's hooks and MCP servers without a trust prompt, so run it
 in a project you trust. Denying Edit and Write keeps the review from changing
 files through those tools; it does not stop a Python command it is allowed to
-run from writing, which is why the rule names Python and nothing broader.
+run from writing, which is why the rule names Python and nothing broader. A
+command outside those rules, such as a shell loop, is denied and the review
+carries on without it.
 
 From the Agent SDK (Python; `pip install claude-agent-sdk`):
 
